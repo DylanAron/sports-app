@@ -8,7 +8,7 @@ import type { AnalysisItem } from '../services/analysisService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.78;
-const CARD_GAP = 14;
+const CARD_GAP = 0;
 const SNAP_WIDTH = CARD_WIDTH + CARD_GAP;
 const SIDE_OFFSET = (SCREEN_WIDTH - CARD_WIDTH) / 2;
 
@@ -63,13 +63,19 @@ const AnalysisScreen: React.FC = () => {
 
     const scale = scrollX.interpolate({
       inputRange,
-      outputRange: [0.85, 1.0, 0.85],
+      outputRange: [0.82, 1.05, 0.82],
       extrapolate: 'clamp',
     });
 
     const cardOpacity = scrollX.interpolate({
       inputRange,
-      outputRange: [0.65, 1.0, 0.65],
+      outputRange: [0.5, 1.0, 0.5],
+      extrapolate: 'clamp',
+    });
+
+    const translateY = scrollX.interpolate({
+      inputRange,
+      outputRange: [20, -10, 20],
       extrapolate: 'clamp',
     });
 
@@ -84,6 +90,18 @@ const AnalysisScreen: React.FC = () => {
       outputRange: ['#eef1f5', '#2563eb'],
     });
 
+    const shadowOpacityVal = scrollX.interpolate({
+      inputRange,
+      outputRange: [0.06, 0.4, 0.06],
+      extrapolate: 'clamp',
+    });
+
+    const shadowElevation = scrollX.interpolate({
+      inputRange,
+      outputRange: [3, 12, 3],
+      extrapolate: 'clamp',
+    });
+
     return (
       <Animated.View
         style={[
@@ -91,9 +109,11 @@ const AnalysisScreen: React.FC = () => {
           {
             width: CARD_WIDTH,
             marginRight: CARD_GAP,
-            transform: [{ scale }],
+            transform: [{ scale }, { translateY }],
             opacity: cardOpacity,
             borderColor,
+            shadowOpacity: shadowOpacityVal,
+            elevation: shadowElevation,
           },
         ]}>
         <TouchableOpacity
@@ -125,8 +145,8 @@ const AnalysisScreen: React.FC = () => {
 
             {item.content && (
               <View style={styles.contentBox}>
-                <View style={{ maxHeight: 100 }}>
-                  <Text style={styles.contentText} numberOfLines={4}>{item.content.replace(/<[^>]*>/g, '')}</Text>
+                <View >
+                  <Text style={styles.contentText}>{item.content.replace(/<[^>]*>/g, '')}</Text>
                 </View>
               </View>
             )}
@@ -158,7 +178,7 @@ const AnalysisScreen: React.FC = () => {
           data={data}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingStart: SIDE_OFFSET, paddingEnd: SIDE_OFFSET - CARD_GAP, paddingTop: 24, paddingBottom: 20 }}
+          contentContainerStyle={{ paddingStart: SIDE_OFFSET, paddingEnd: SIDE_OFFSET - CARD_GAP, paddingTop: 50, paddingBottom: 20 }}
           keyExtractor={item => String(item.id)}
           renderItem={renderItem}
           onScroll={Animated.event(
@@ -205,11 +225,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1.5,
     backgroundColor: '#ffffff',
-    shadowColor: '#2563eb',
+    shadowColor: '#1e293b',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowRadius: 16,
   },
   cardInner: {
     borderRadius: 14,
@@ -234,7 +253,7 @@ const styles = StyleSheet.create({
 
   paginationRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingBottom: 30, paddingTop: 4,
+    position: 'absolute', bottom: 10, left: 0, right: 0,
   },
   arrowHit: { paddingHorizontal: 20, paddingVertical: 10 },
   arrowText: { fontSize: 28, color: '#2563eb', fontWeight: '600' },
