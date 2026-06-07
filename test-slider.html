@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>滑块验证测试</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: #0a0e1a;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }
+
+    .header {
+      background: linear-gradient(180deg, #0d1321 0%, #0a0e1a 100%);
+      padding: 15px 20px;
+      border-bottom: 1px solid rgba(255,107,53,0.3);
+    }
+
+    .header-tabs {
+      display: flex;
+      gap: 20px;
+    }
+
+    .header-tab {
+      font-size: 16px;
+      color: #fff;
+      padding-bottom: 8px;
+      border-bottom: 2px solid transparent;
+    }
+
+    .header-tab.active {
+      color: #ff6b35;
+      border-bottom-color: #ff6b35;
+    }
+
+    .score-list {
+      padding: 10px;
+    }
+
+    .score-item {
+      background: #1a1f2e;
+      margin-bottom: 8px;
+      padding: 12px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .team-info {
+      flex: 1;
+    }
+
+    .team-name {
+      font-size: 14px;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .match-time {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .score {
+      font-size: 16px;
+      font-weight: bold;
+      color: #ff6b35;
+    }
+
+    .verify-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .verify-box {
+      background: #fff;
+      border-radius: 12px;
+      padding: 30px;
+      width: 90%;
+      max-width: 340px;
+    }
+
+    .verify-title {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .verify-desc {
+      text-align: center;
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 20px;
+    }
+
+    .slider-wrap {
+      position: relative;
+      height: 44px;
+      background: #f5f5f5;
+      border-radius: 22px;
+      overflow: hidden;
+    }
+
+    .slider-track {
+      position: absolute;
+      top: 0; left: 0; height: 100%;
+      background: linear-gradient(90deg, #ff6b35, #f7931e);
+      width: 0;
+      transition: width 0.1s ease;
+    }
+
+    .slider-btn {
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 40px; height: 40px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 20px;
+      color: #ff6b35;
+      z-index: 10;
+      user-select: none;
+    }
+
+    .slider-text {
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 100%;
+      line-height: 44px;
+      text-align: center;
+      font-size: 14px;
+      color: #666;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .success-message {
+      margin-top: 20px;
+      padding: 15px;
+      background: #e8f5e9;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 14px;
+      color: #2e7d32;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .success-message.show { opacity: 1; }
+
+    .test-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #1a1f2e;
+      padding: 10px 0;
+      padding-bottom: calc(10px + env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: space-around;
+      border-top: 1px solid #2a2f3e;
+    }
+
+    .footer-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .footer-icon {
+      width: 24px;
+      height: 24px;
+      background: #3a3f4e;
+      border-radius: 50%;
+    }
+
+    .footer-item.active .footer-icon {
+      background: #ff6b35;
+    }
+
+    .footer-text {
+      font-size: 10px;
+      color: #666;
+    }
+
+    .footer-item.active .footer-text {
+      color: #ff6b35;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-tabs">
+      <div class="header-tab active">全部</div>
+      <div class="header-tab">进行中</div>
+      <div class="header-tab">赛程</div>
+      <div class="header-tab">赛果</div>
+    </div>
+  </div>
+
+  <div class="score-list">
+    <div class="score-item">
+      <div class="team-info">
+        <div class="team-name">葡萄牙U19 VS 哈萨克斯坦U19</div>
+        <div class="match-time">90+ 分钟</div>
+      </div>
+      <div class="score">0-0</div>
+    </div>
+    <div class="score-item">
+      <div class="team-info">
+        <div class="team-name">霍克斯布里城 VS 格兰德斯威尔</div>
+        <div class="match-time">90+ 分钟</div>
+      </div>
+      <div class="score">1-0</div>
+    </div>
+    <div class="score-item">
+      <div class="team-info">
+        <div class="team-name">悉尼奥林匹克U20 VS 新南威尔士大学U20</div>
+        <div class="match-time">90+ 分钟</div>
+      </div>
+      <div class="score">2-3</div>
+    </div>
+    <div class="score-item">
+      <div class="team-info">
+        <div class="team-name">坦亚武里皇家理工大学 VS 呵叻皇家大学</div>
+        <div class="match-time">90+ 分钟</div>
+      </div>
+      <div class="score">0-3</div>
+    </div>
+    <div class="score-item">
+      <div class="team-info">
+        <div class="team-name">泰国国家体育大学 VS 皮亚亚邦迪特大学</div>
+        <div class="match-time">90+ 分钟</div>
+      </div>
+      <div class="score">2-0</div>
+    </div>
+    <div class="score-item">
+      <div class="team-info">
+        <div class="team-name">博乐大学 VS 素攀府皇家大学</div>
+        <div class="match-time">90+ 分钟</div>
+      </div>
+      <div class="score">0-0</div>
+    </div>
+    <div class="score-item">
+      <div class="team-info">
+        <div class="team-name">兰实大学JWFC VS 他信大学</div>
+        <div class="match-time">90+ 分钟</div>
+      </div>
+      <div class="score">0-3</div>
+    </div>
+    <div class="score-item">
+      <div class="team-info">
+        <div class="team-name">阳光海岸流浪者 VS 圣乔治维FC</div>
+        <div class="match-time">90+ 分钟</div>
+      </div>
+      <div class="score">0-0</div>
+    </div>
+  </div>
+
+  <div class="test-footer" id="testFooter">
+    <div class="footer-item"><div class="footer-icon"></div><div class="footer-text">首页</div></div>
+    <div class="footer-item active"><div class="footer-icon"></div><div class="footer-text">比赛</div></div>
+    <div class="footer-item"><div class="footer-icon"></div><div class="footer-text">资讯</div></div>
+    <div class="footer-item"><div class="footer-icon"></div><div class="footer-text">数据</div></div>
+    <div class="footer-item"><div class="footer-icon"></div><div class="footer-text">我的</div></div>
+  </div>
+
+  <div class="verify-container" id="verifyContainer">
+    <div class="verify-box">
+      <h3 class="verify-title">访问验证</h3>
+      <p class="verify-desc">为保证您的正常访问，请进行如下验证</p>
+      <div class="slider-wrap" id="sliderWrap">
+        <div class="slider-track" id="sliderTrack"></div>
+        <div class="slider-text">请按住滑块，拖动到最右边</div>
+        <div class="slider-btn" id="sliderBtn">&rarr;</div>
+      </div>
+      <div class="success-message" id="successMessage">
+        <span>验证成功！</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var sliderBtn = document.getElementById('sliderBtn');
+    var sliderWrap = document.getElementById('sliderWrap');
+    var sliderTrack = document.getElementById('sliderTrack');
+    var successMessage = document.getElementById('successMessage');
+    var verifyContainer = document.getElementById('verifyContainer');
+    var testFooter = document.getElementById('testFooter');
+
+    var isDragging = false, startX = 0, startLeft = 0, maxLeft = 0;
+
+    function updateMaxLeft() {
+      maxLeft = sliderWrap.offsetWidth - sliderBtn.offsetWidth - 4;
+    }
+
+    updateMaxLeft();
+    window.addEventListener('resize', updateMaxLeft);
+
+    sliderBtn.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      startX = e.clientX;
+      startLeft = parseInt(window.getComputedStyle(sliderBtn).left) || 0;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      var deltaX = e.clientX - startX;
+      var newLeft = Math.max(0, Math.min(startLeft + deltaX, maxLeft));
+      sliderBtn.style.left = newLeft + 'px';
+      sliderTrack.style.width = (newLeft + sliderBtn.offsetWidth / 2) + 'px';
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      var currentLeft = parseInt(window.getComputedStyle(sliderBtn).left) || 0;
+      if (currentLeft >= maxLeft - 5) {
+        sliderBtn.style.left = maxLeft + 'px';
+        sliderTrack.style.width = sliderWrap.offsetWidth + 'px';
+        successMessage.classList.add('show');
+        document.querySelector('.slider-text').textContent = '验证成功';
+        setTimeout(function() {
+          verifyContainer.style.display = 'none';
+        }, 1000);
+        console.log('=== 自动滑块验证测试成功 ===');
+      } else {
+        sliderBtn.style.left = '2px';
+        sliderTrack.style.width = '0';
+      }
+    });
+
+    sliderBtn.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      startX = e.touches[0].clientX;
+      startLeft = parseInt(window.getComputedStyle(sliderBtn).left) || 0;
+    });
+
+    document.addEventListener('touchmove', function(e) {
+      if (!isDragging) return;
+      var deltaX = e.touches[0].clientX - startX;
+      var newLeft = Math.max(0, Math.min(startLeft + deltaX, maxLeft));
+      sliderBtn.style.left = newLeft + 'px';
+      sliderTrack.style.width = (newLeft + sliderBtn.offsetWidth / 2) + 'px';
+    });
+
+    document.addEventListener('touchend', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      var currentLeft = parseInt(window.getComputedStyle(sliderBtn).left) || 0;
+      if (currentLeft >= maxLeft - 5) {
+        sliderBtn.style.left = maxLeft + 'px';
+        sliderTrack.style.width = sliderWrap.offsetWidth + 'px';
+        successMessage.classList.add('show');
+        document.querySelector('.slider-text').textContent = '验证成功';
+        setTimeout(function() {
+          verifyContainer.style.display = 'none';
+        }, 1000);
+        console.log('=== 自动滑块验证测试成功 ===');
+      } else {
+        sliderBtn.style.left = '2px';
+        sliderTrack.style.width = '0';
+      }
+    });
+  </script>
+</body>
+</html>
