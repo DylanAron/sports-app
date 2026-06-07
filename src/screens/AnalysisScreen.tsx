@@ -7,7 +7,7 @@ import { analysisApi } from '../services/analysisService';
 import type { AnalysisItem } from '../services/analysisService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH * 0.78;
+const CARD_WIDTH = SCREEN_WIDTH * 0.75;
 const CARD_GAP = 0;
 const SNAP_WIDTH = CARD_WIDTH + CARD_GAP;
 const SIDE_OFFSET = (SCREEN_WIDTH - CARD_WIDTH) / 2;
