@@ -71,9 +71,9 @@ const Navigation: React.FC = () => {
           name="Home"
           component={HomeScreen}
           options={{
-            tabBarLabel: '首页',
+            tabBarLabel: 'AI',
             tabBarIcon: ({ focused }) => (
-              <TabIcon label="首页" icon="🏠" focused={focused} />
+              <TabIcon label="AI" icon="🤖" focused={focused} />
             ),
           }}
         />

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, StatusBar } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, fonts } from '../theme';
 import CornerListScreen from './corner/CornerListScreen';
 import CornerDetailScreen from './corner/CornerDetailScreen';
@@ -12,16 +13,16 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 type ApiModule = 'corner' | 'goal' | 'half_full' | 'score' | 'win_lose';
 
 const AI_ITEMS = [
-  { key: 'corner', name: 'AI 角球', img: require('../assets/ai/ai_corner.jpg') },
-  { key: 'goal', name: 'AI 进球', img: require('../assets/ai/ai_goal.jpg') },
-  { key: 'half_full', name: 'AI 半全场', img: require('../assets/ai/ai_half_full.jpg') },
-  { key: 'qingbao', name: 'AI 情报', img: require('../assets/ai/ai_qingbao.jpg') },
-  { key: 'score', name: 'AI 比分', img: require('../assets/ai/ai_score.jpg') },
-  { key: 'win_lose', name: 'AI 胜负', img: require('../assets/ai/ai_win_lose.jpg') },
+  { key: 'corner', name: 'AI 角球', img: require('../assets/ai/ai_corner.png') },
+  { key: 'goal', name: 'AI 进球', img: require('../assets/ai/ai_goal.png') },
+  { key: 'half_full', name: 'AI 半全场', img: require('../assets/ai/ai_half_full.png') },
+  { key: 'qingbao', name: 'AI 情报', img: require('../assets/ai/ai_qingbao.png') },
+  { key: 'score', name: 'AI 比分', img: require('../assets/ai/ai_score.png') },
+  { key: 'win_lose', name: 'AI 胜负', img: require('../assets/ai/ai_win_lose.png') },
 ];
 
 const CARD_W = (SCREEN_WIDTH - 74) / 2;
-const CARD_H = CARD_W * 1.2;
+const CARD_H = CARD_W;
 
 type PageState =
   | { type: 'home' }
@@ -32,6 +33,13 @@ type PageState =
 
 const HomeScreen: React.FC = () => {
   const [page, setPage] = useState<PageState>({ type: 'home' });
+
+  // 每次切换到 AI tab 时重置到首页
+  useFocusEffect(
+    useCallback(() => {
+      setPage({ type: 'home' });
+    }, [])
+  );
 
   if (page.type === 'corner_list') {
     return (
@@ -102,18 +110,18 @@ const HomeScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { height: '100%', flex: 1, backgroundColor: '#f0f4f8', position: 'relative' },
-  bgTop: { width: '100%', position: 'absolute', top: 40, left: 0, right: 0, height: '20%', backgroundColor: '#2563eb30', justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#f0f4f8' },
+  bgTop: { paddingTop: 50, paddingBottom: 10, justifyContent: 'center', alignItems: 'center' },
   titleArea: { alignItems: 'center' },
-  title: { fontSize: fonts.title, fontWeight: '800', color: colors.secondary, letterSpacing: 4 },
-  subtitle: { fontSize: fonts.small, color: colors.textDim, letterSpacing: 6, marginTop: 4 },
+  title: { fontSize: 20, fontWeight: '800', color: '#1e293b', letterSpacing: 3 },
+  subtitle: { fontSize: 11, color: '#94a3b8', letterSpacing: 5, marginTop: 3 },
   gridContainer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 20, backgroundColor: '#f0f4f8', borderTopLeftRadius: 30, borderTopRightRadius: 30, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14 },
   card: {
     borderRadius: 14,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#e8edf2',
-    padding: 12,
+    padding: 4,
     alignItems: 'center',
     // iOS阴影
     shadowColor: '#1e293b',
