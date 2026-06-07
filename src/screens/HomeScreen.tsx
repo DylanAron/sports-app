@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, StatusBar } from 'react-native';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, StatusBar, FlatList, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, fonts } from '../theme';
 import CornerListScreen from './corner/CornerListScreen';
@@ -21,6 +21,15 @@ const AI_ITEMS = [
   { key: 'win_lose', name: 'AI 胜负', img: require('../assets/ai/ai_win_lose.png') },
 ];
 
+const BANNER_IMAGES = [
+  require('../assets/ai/banner_1.png'),
+  require('../assets/ai/banner_2.png'),
+  require('../assets/ai/banner_3.png'),
+  require('../assets/ai/banner_4.png'),
+];
+const BANNER_WIDTH = SCREEN_WIDTH - 40;
+const AUTO_PLAY_INTERVAL = 3000;
+
 const CARD_W = (SCREEN_WIDTH - 74) / 2;
 const CARD_H = CARD_W;
 
@@ -33,8 +42,26 @@ type PageState =
 
 const HomeScreen: React.FC = () => {
   const [page, setPage] = useState<PageState>({ type: 'home' });
+  const [bannerIndex, setBannerIndex] = useState(0);
+  const bannerRef = useRef<FlatList>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 每次切换到 AI tab 时重置到首页
+  // 自动轮播
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      const next = (bannerIndex + 1) % BANNER_IMAGES.length;
+      bannerRef.current?.scrollToIndex({ index: next, animated: true });
+      setBannerIndex(next);
+    }, AUTO_PLAY_INTERVAL);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [bannerIndex]);
+
+  const onBannerScrollEnd = (e: any) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const index = Math.round(x / BANNER_WIDTH);
+    setBannerIndex(index);
+  };
+
   useFocusEffect(
     useCallback(() => {
       setPage({ type: 'home' });
@@ -86,49 +113,73 @@ const HomeScreen: React.FC = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f0f4f8" />
 
-      <View style={styles.bgTop}>
-        <View style={styles.titleArea}>
-          <Text style={styles.title}>AI 智能预测</Text>
-          <Text style={styles.subtitle}>AI SPORTS PREDICTION</Text>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
+        <View style={styles.headerArea}>
+          <View style={styles.titleArea}>
+            <Text style={styles.title}>AI 智能预测</Text>
+            <Text style={styles.subtitle}>AI SPORTS PREDICTION</Text>
+          </View>
         </View>
-      </View>
 
-      <View style={styles.gridContainer}>
-        {AI_ITEMS.map((item) => (
-          <TouchableOpacity
-            key={item.key}
-            style={[styles.card, { width: CARD_W, height: CARD_H }]}
-            activeOpacity={0.8}
-            onPress={() => handlePress(item.key)}>
-            <Image source={item.img} style={styles.cardImg} resizeMode="contain" />
-            {/* <Text style={styles.cardLabel}>{item.name}</Text> */}
-          </TouchableOpacity>
-        ))}
-      </View>
+        {/* 轮播图 */}
+        <View style={styles.bannerSection}>
+          <FlatList
+            ref={bannerRef}
+            data={BANNER_IMAGES}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={BANNER_WIDTH}
+            decelerationRate="fast"
+            onMomentumScrollEnd={onBannerScrollEnd}
+            renderItem={({ item }) => (
+              <Image source={item} style={styles.bannerImg} resizeMode="cover" />
+            )}
+            keyExtractor={(_, idx) => String(idx)}
+          />
+          <View style={styles.bannerDots}>
+            {BANNER_IMAGES.map((_, idx) => (
+              <View key={idx} style={[styles.bannerDot, idx === bannerIndex && styles.bannerDotActive]} />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.gridContainer}>
+          {AI_ITEMS.map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.card, { width: CARD_W, height: CARD_H }]}
+              activeOpacity={0.8}
+              onPress={() => handlePress(item.key)}>
+              <Image source={item.img} style={styles.cardImg} resizeMode="contain" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f4f8' },
-  bgTop: { paddingTop: 50, paddingBottom: 10, justifyContent: 'center', alignItems: 'center' },
+  headerArea: { paddingTop: 50, paddingBottom: 6, justifyContent: 'center', alignItems: 'center' },
   titleArea: { alignItems: 'center' },
-  title: { fontSize: 20, fontWeight: '800', color: '#1e293b', letterSpacing: 3 },
+  title: { fontSize: 20, fontWeight: '800', color: '#2563eb', letterSpacing: 3 },
   subtitle: { fontSize: 11, color: '#94a3b8', letterSpacing: 5, marginTop: 3 },
-  gridContainer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 20, backgroundColor: '#f0f4f8', borderTopLeftRadius: 30, borderTopRightRadius: 30, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14 },
+  // 轮播
+  bannerSection: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 },
+  bannerImg: { width: BANNER_WIDTH, height: 110, borderRadius: 14 },
+  bannerDots: { flexDirection: 'row', justifyContent: 'center', marginTop: 6, gap: 6 },
+  bannerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#d0d8e0' },
+  bannerDotActive: { width: 20, height: 6, borderRadius: 3, backgroundColor: '#2563eb' },
+  gridContainer: {
+    paddingHorizontal: 20, paddingBottom: 100, paddingTop: 10,
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14,
+  },
   card: {
-    borderRadius: 14,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e8edf2',
-    padding: 4,
-    alignItems: 'center',
-    // iOS阴影
-    shadowColor: '#1e293b',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    // Android阴影
+    borderRadius: 14, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e8edf2',
+    padding: 4, alignItems: 'center',
+    shadowColor: '#1e293b', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10,
     elevation: 6,
   },
   cardImg: { flex: 1, width: '100%', borderRadius: 8 },
