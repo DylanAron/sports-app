@@ -16,12 +16,12 @@ const DEV: EnvConfig = {
 };
 
 const PROD: EnvConfig = {
-  API_BASE_URL: 'https://api.sportsworld.com',
+  API_BASE_URL: 'https://6hlot.com',
   ENV: 'production',
 };
 
 // 切换环境：修改此处即可
-const CURRENT_ENV: Environment = 'development';
+const CURRENT_ENV: Environment = 'production';
 
 const config: Record<Environment, EnvConfig> = {
   development: DEV,

@@ -30,11 +30,9 @@ const LoginScreen: React.FC<Props> = ({ onLoginSuccess, onClose }) => {
       if (mode === 'login') {
         const res = await userApi.login({ username, password });
         setToken(res.token);
-        Alert.alert('成功', '登录成功');
       } else {
         const res = await userApi.register({ username, password, nickname: nickname || undefined });
         setToken(res.token);
-        Alert.alert('成功', '注册成功');
       }
       onLoginSuccess();
     } catch (e: any) {
