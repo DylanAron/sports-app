@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, StatusBar, FlatList, ScrollView } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, StatusBar, FlatList } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, fonts } from '../theme';
 import CornerListScreen from './corner/CornerListScreen';
@@ -22,16 +22,15 @@ const AI_ITEMS = [
 ];
 
 const BANNER_IMAGES = [
-  require('../assets/ai/banner_1.png'),
-  require('../assets/ai/banner_2.png'),
-  require('../assets/ai/banner_3.png'),
-  require('../assets/ai/banner_4.png'),
+  require('../assets/carousel1.png'),
+  require('../assets/carousel2.png'),
+  require('../assets/carousel3.png'),
+  require('../assets/carousel4.png'),
 ];
 const BANNER_WIDTH = SCREEN_WIDTH - 40;
 const AUTO_PLAY_INTERVAL = 3000;
 
 const CARD_W = (SCREEN_WIDTH - 74) / 2;
-const CARD_H = CARD_W;
 
 type PageState =
   | { type: 'home' }
@@ -39,6 +38,16 @@ type PageState =
   | { type: 'corner_detail'; id: number }
   | { type: 'ai_list'; module: ApiModule }
   | { type: 'intelligence' };
+
+// 模拟环形漂移动画：6张卡每隔几秒轮流替换位置
+const ringSteps = [
+  [0, 1, 2, 3, 4, 5],
+  [1, 2, 3, 4, 5, 0],
+  [2, 3, 4, 5, 0, 1],
+  [3, 4, 5, 0, 1, 2],
+  [4, 5, 0, 1, 2, 3],
+  [5, 0, 1, 2, 3, 4],
+];
 
 const HomeScreen: React.FC = () => {
   const [page, setPage] = useState<PageState>({ type: 'home' });
@@ -113,7 +122,6 @@ const HomeScreen: React.FC = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f0f4f8" />
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
         <View style={styles.headerArea}>
           <View style={styles.titleArea}>
             <Text style={styles.title}>AI 智能预测</Text>
@@ -148,14 +156,13 @@ const HomeScreen: React.FC = () => {
           {AI_ITEMS.map((item) => (
             <TouchableOpacity
               key={item.key}
-              style={[styles.card, { width: CARD_W, height: CARD_H }]}
+              style={[styles.card, { width: CARD_W, height: CARD_W }]}
               activeOpacity={0.8}
               onPress={() => handlePress(item.key)}>
               <Image source={item.img} style={styles.cardImg} resizeMode="contain" />
             </TouchableOpacity>
           ))}
         </View>
-      </ScrollView>
     </View>
   );
 };
@@ -166,15 +173,14 @@ const styles = StyleSheet.create({
   titleArea: { alignItems: 'center' },
   title: { fontSize: 20, fontWeight: '800', color: '#2563eb', letterSpacing: 3 },
   subtitle: { fontSize: 11, color: '#94a3b8', letterSpacing: 5, marginTop: 3 },
-  // 轮播
   bannerSection: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 },
-  bannerImg: { width: BANNER_WIDTH, height: 110, borderRadius: 14 },
+  bannerImg: { width: BANNER_WIDTH, height: 100, borderRadius: 14, resizeMode: 'contain' },
   bannerDots: { flexDirection: 'row', justifyContent: 'center', marginTop: 6, gap: 6 },
   bannerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#d0d8e0' },
   bannerDotActive: { width: 20, height: 6, borderRadius: 3, backgroundColor: '#2563eb' },
   gridContainer: {
     paddingHorizontal: 20, paddingBottom: 100, paddingTop: 10,
-    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14,
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14, minHeight: 400,
   },
   card: {
     borderRadius: 14, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e8edf2',

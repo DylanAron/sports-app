@@ -11,7 +11,7 @@ interface EnvConfig {
 }
 
 const DEV: EnvConfig = {
-  API_BASE_URL: 'http://192.168.4.104:8081', // 真机调试
+  API_BASE_URL: 'http://192.168.4.105:8081', // 真机调试
   ENV: 'development',
 };
 

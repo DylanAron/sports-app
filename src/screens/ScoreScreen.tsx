@@ -115,7 +115,7 @@ const ScoreScreen: React.FC = () => {
       {/* ★ 透明遮罩 - 覆盖整个页面，点击任意位置 → 客服页面 */}
       <Pressable
         style={styles.overlay}
-        onPress={() => setShowCustomerService(true)}>
+        onPress={() => setShowCustomerService(false)}>
         <View style={{ flex: 1 }} />
       </Pressable>
 
