@@ -3,9 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, 
 import { cornerApi, goalApi, scoreApi, halfFullApi, winLoseApi } from '../../services';
 import type { CornerItem } from '../../services/cornerService';
 
-const DEFAULT_LEAGUE = require('../../assets/ai/default_league_logo.png');
-const DEFAULT_HOME = require('../../assets/ai/default_home_logo.png');
-const DEFAULT_AWAY = require('../../assets/ai/default_away_logo.png');
+const DEFAULT_LEAGUE = require('../../assets/ai/default_league_logo.webp');
+const DEFAULT_HOME = require('../../assets/ai/default_home_logo.webp');
+const DEFAULT_AWAY = require('../../assets/ai/default_away_logo.webp');
 
 type ApiModule = 'corner' | 'goal' | 'half_full' | 'score' | 'win_lose';
 

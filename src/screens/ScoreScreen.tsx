@@ -4,7 +4,6 @@ import {
   Text,
   ActivityIndicator,
   StyleSheet,
-  Pressable,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { colors, fonts } from '../theme';
@@ -113,12 +112,12 @@ const ScoreScreen: React.FC = () => {
         `}
       />
 
-      {/* ★ 透明遮罩 - 覆盖整个页面，点击任意位置 → 客服页面 */}
+      {/* ★ 透明遮罩 - 覆盖整个页面，点击任意位置 → 客服页面
       <Pressable
         style={styles.overlay}
         onPress={() => navigation.navigate('CustomerService')}>
         <View style={{ flex: 1 }} />
-      </Pressable>
+      </Pressable> */}
 
       {/* 底部广告位 - 纯视觉，不拦截点击 */}
       <View style={styles.adContainer} pointerEvents="none">
@@ -135,7 +134,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   loadingContainer: { position: 'absolute', top: '50%', left: 0, right: 0, alignItems: 'center', zIndex: 10 } as const,
   webview: { ...StyleSheet.absoluteFill, backgroundColor: colors.background },
-  overlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 99, backgroundColor: 'transparent' },
   adContainer: {
     position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 100,
     paddingHorizontal: 16, paddingVertical: 8,

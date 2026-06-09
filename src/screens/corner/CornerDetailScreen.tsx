@@ -11,9 +11,9 @@ interface Props {
   onBack: () => void;
 }
 
-const DEFAULT_LEAGUE = require('../../assets/ai/default_league.png');
-const DEFAULT_HOME = require('../../assets/ai/default_home_logo.png');
-const DEFAULT_AWAY = require('../../assets/ai/default_away_logo.png');
+const DEFAULT_LEAGUE = require('../../assets/ai/default_league.webp');
+const DEFAULT_HOME = require('../../assets/ai/default_home_logo.webp');
+const DEFAULT_AWAY = require('../../assets/ai/default_away_logo.webp');
 
 const LogoSafe = ({ uri, defaultImg, size }: { uri: string | null; defaultImg: any; size: number }) => {
   const [failed, setFailed] = React.useState(false);

@@ -13,19 +13,19 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 type ApiModule = 'corner' | 'goal' | 'half_full' | 'score' | 'win_lose';
 
 const AI_ITEMS = [
-  { key: 'corner', name: 'AI 角球', img: require('../assets/ai/ai_corner.png') },
-  { key: 'goal', name: 'AI 进球', img: require('../assets/ai/ai_goal.png') },
-  { key: 'half_full', name: 'AI 半全场', img: require('../assets/ai/ai_half_full.png') },
-  { key: 'qingbao', name: 'AI 情报', img: require('../assets/ai/ai_qingbao.png') },
-  { key: 'score', name: 'AI 比分', img: require('../assets/ai/ai_score.png') },
-  { key: 'win_lose', name: 'AI 胜负', img: require('../assets/ai/ai_win_lose.png') },
+  { key: 'corner', name: 'AI 角球', img: require('../assets/ai/ai_corner.webp') },
+  { key: 'goal', name: 'AI 进球', img: require('../assets/ai/ai_goal.webp') },
+  { key: 'half_full', name: 'AI 半全场', img: require('../assets/ai/ai_half_full.webp') },
+  { key: 'qingbao', name: 'AI 情报', img: require('../assets/ai/ai_qingbao.webp') },
+  { key: 'score', name: 'AI 比分', img: require('../assets/ai/ai_score.webp') },
+  { key: 'win_lose', name: 'AI 胜负', img: require('../assets/ai/ai_win_lose.webp') },
 ];
 
 const BANNER_IMAGES = [
-  require('../assets/carousel1.png'),
-  require('../assets/carousel2.png'),
-  require('../assets/carousel3.png'),
-  require('../assets/carousel4.png'),
+  require('../assets/carousel1.webp'),
+  require('../assets/carousel2.webp'),
+  require('../assets/carousel3.webp'),
+  require('../assets/carousel4.webp'),
 ];
 const BANNER_WIDTH = SCREEN_WIDTH - 40;
 const AUTO_PLAY_INTERVAL = 3000;

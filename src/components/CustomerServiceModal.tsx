@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,15 +10,62 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
+  Alert,
+  Dimensions,
+  Linking,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '../theme';
 import {
   getUserId,
   fetchHistory,
   createWebSocketConnection,
+  uploadFile,
+  getFullFileUrl,
   type ChatMessage,
   type WsConnection,
 } from '../services/chatService';
+import { launchImageLibrary } from 'react-native-image-picker';
+import { WebView } from 'react-native-webview';
+
+const MAX_IMG_W = 220;
+const MAX_IMG_H = 300;
+const MIN_IMG_DIM = 80;
+
+/** 自适应宽高的图片组件 */
+const ImageMsg = ({ url, isUser }: { url: string; isUser: boolean }) => {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    Image.getSize(url, (w, h) => {
+      let scaledW = w, scaledH = h;
+      if (w > MAX_IMG_W) { scaledW = MAX_IMG_W; scaledH = (h / w) * MAX_IMG_W; }
+      if (scaledH > MAX_IMG_H) { scaledH = MAX_IMG_H; scaledW = (scaledW / scaledH) * MAX_IMG_H; }
+      setSize({ w: Math.round(scaledW), h: Math.round(scaledH) });
+    }, () => setSize({ w: 200, h: 200 }));
+  }, [url]);
+
+  const imgStyle = size
+    ? { width: size.w, height: size.h, borderRadius: 8 }
+    : { width: 200, height: 200, borderRadius: 8 };
+
+  // 用户图片：白底气泡容器
+  if (isUser) {
+    return (
+      <View style={{ borderRadius: 8, padding: 2, marginTop: 6 }}>
+        <Image source={{ uri: url }} style={imgStyle} resizeMode="contain" />
+      </View>
+    );
+  }
+
+  // 客服图片：保持白底气泡
+  return (
+    <View style={{ backgroundColor: '#fff', borderRadius: 8, padding: 2, marginTop: 6 }}>
+      <Image source={{ uri: url }} style={imgStyle} resizeMode="contain" />
+    </View>
+  );
+};
 
 type Props = {
   visible: boolean;
@@ -30,6 +77,79 @@ function isOver5Min(t1?: string, t2?: string): boolean {
   if (!t1 || !t2) return true;
   return Math.abs(new Date(t1).getTime() - new Date(t2).getTime()) >= 5 * 60 * 1000;
 }
+
+/** 判断字符串是否包含 HTML 标签 */
+function isHtmlContent(text: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(text);
+}
+
+/** 渲染 HTML 内容（用于欢迎语等富文本） */
+const HtmlBubble = ({ html }: { html: string }) => {
+  const [h, setH] = useState(0);
+  const source = useMemo(() => ({
+    html: `<!DOCTYPE html><html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;padding:8px 12px;font-size:14px;line-height:1.5;color:#222;word-wrap:break-word;overflow-wrap:break-word}img{max-width:100%!important;height:auto}</style>
+</head><body>
+${html}
+</body></html>`,
+  }), [html]);
+
+  const availWidth = Dimensions.get('window').width - 68 - 48 - 32;
+
+  const js = `
+(function(){
+  var i = setInterval(function(){
+    var h = document.body.scrollHeight;
+    if(h > 0){ clearInterval(i); window.ReactNativeWebView.postMessage(''+h); }
+  }, 50);
+  setTimeout(function(){ clearInterval(i); }, 3000);
+})();
+`;
+
+  return (
+    <View style={[styles.agentBubble, { padding: 0, overflow: 'hidden', alignSelf: 'flex-start' }]}>
+      <WebView
+        source={source}
+        style={{ backgroundColor: '#fff', width: availWidth, height: h || 50 }}
+        scrollEnabled={false}
+        showsVerticalScrollIndicator={false}
+        injectedJavaScript={js}
+        onMessage={(e) => { const v = Number(e.nativeEvent.data); if (v > 0) setH(v); }}
+      />
+    </View>
+  );
+};
+
+/** 文件消息气泡 */
+const FileMsg = ({ url, name, isUser }: { url: string; name: string; isUser: boolean }) => {
+  const fullUrl = getFullFileUrl(url) || url;
+  const handlePress = () => {
+    Linking.openURL(fullUrl).catch(() =>
+      Alert.alert('提示', '无法打开文件链接'),
+    );
+  };
+  const containerStyle = isUser ? styles.userBubble : styles.agentBubble;
+
+  return (
+    <TouchableOpacity onPress={handlePress} activeOpacity={0.7} style={containerStyle}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text style={{ fontSize: 20, marginRight: 8, color: isUser ? '#fff' : '#2563eb' }}>📎</Text>
+        <Text
+          style={{
+            fontSize: 14,
+            color: isUser ? '#fff' : '#222',
+            flex: 1,
+            textDecorationLine: 'underline',
+          }}
+          numberOfLines={2}
+          ellipsizeMode="middle">
+          {name}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 /** 格式化时间 HH:mm */
 function formatTime(ts?: string): string {
@@ -53,6 +173,8 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
   const pendingRef = useRef<ChatMessage[]>([]);
   const agentIdRef = useRef<string | null>(null);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
@@ -176,6 +298,74 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
     inputRef.current?.focus();
   };
 
+  // ── 上传并发送文件/图片 ──
+  const uploadAndSend = async (file: { uri: string; type: string; name: string }) => {
+    if (!wsRef.current) return;
+
+    setUploading(true);
+    try {
+      const result = await uploadFile(file);
+      if (!result) {
+        Alert.alert('上传失败', '图片上传失败，请重试');
+        return;
+      }
+
+      const isImage = file.type.startsWith('image/');
+      const msgType = isImage ? 'image' : 'file';
+
+      setMessages((prev) => [...prev, {
+        content: file.name,
+        msgType,
+        direction: 'user',
+        fileUrl: result.url,
+        timestamp: new Date().toISOString(),
+        _local: true,
+      }]);
+      scrollToBottom();
+
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'user_message',
+          content: file.name,
+          msgType,
+          fileUrl: result.url,
+          channelCode: 'app',
+        }),
+      );
+    } catch (e) {
+      console.error('uploadAndSend error:', e);
+      Alert.alert('上传失败', '图片上传异常，请重试');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── 选择图片 ──
+  const pickImage = async () => {
+    try {
+      const res = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.8,
+        maxWidth: 1920,
+        maxHeight: 1920,
+      });
+      if (res.didCancel || !res.assets?.[0]) return;
+      const asset = res.assets[0];
+      if (asset.uri) {
+        uploadAndSend({
+          uri: asset.uri,
+          type: asset.type || 'image/jpeg',
+          name: asset.fileName || `image_${Date.now()}.jpg`,
+        });
+      }
+    } catch (e) {
+      console.warn('pickImage error:', e);
+    }
+  };
+
+  // ── 点击图片按钮 ──
+  const handleAttachmentPress = () => pickImage();
+
   // ── 渲染消息气泡 ──
   const renderItem = ({ item, index }: { item: ChatMessage; index: number }) => {
     const prev = index > 0 ? messages[index - 1] : null;
@@ -193,19 +383,24 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
         {/* 客服消息 → 左对齐 */}
         {!isUser && (
           <View style={styles.agentRow}>
-            <View style={styles.agentAvatar}>
-              <Text style={styles.agentAvatarText}>
-                {item.agentId ? `客${item.agentId}` : '客'}
-              </Text>
+            <View style={styles.avatarAgentWrapper}>
+              <Image source={require('../assets/customer_service_avatar.webp')} style={styles.avatarAgent} />
             </View>
-            <View style={styles.agentBubble}>
-              {item.msgType === 'image' && item.fileUrl ? (
-                <Text style={styles.msgText}>{item.content}</Text>
-              ) : item.msgType === 'file' && item.fileUrl ? (
-                <Text style={styles.msgText}>📎 {item.content}</Text>
-              ) : (
-                <Text style={styles.msgText}>{item.content}</Text>
-              )}
+            <View style={styles.agentContent}>
+              <View style={styles.agentBubbleRow}>
+                <View style={styles.agentTail} />
+                {item.msgType === 'image' && item.fileUrl ? (
+                  <ImageMsg url={getFullFileUrl(item.fileUrl)!} isUser={false} />
+                ) : item.msgType === 'file' && item.fileUrl ? (
+                  <FileMsg url={item.fileUrl} name={item.content} isUser={false} />
+                ) : isHtmlContent(item.content) ? (
+                  <HtmlBubble html={item.content} />
+                ) : (
+                  <View style={styles.agentBubble}>
+                    <Text style={styles.agentMsgText}>{item.content}</Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
         )}
@@ -213,11 +408,24 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
         {/* 用户消息 → 右对齐 */}
         {isUser && (
           <View style={styles.userRow}>
-            <View style={styles.userBubble}>
-              <Text style={styles.userMsgText}>{item.content}</Text>
+            <View style={styles.userContent}>
+              <View style={styles.userBubbleRow}>
+                {item.msgType === 'image' && item.fileUrl ? (
+                  <View style={styles.userBubbleImage}>
+                    <ImageMsg url={getFullFileUrl(item.fileUrl)!} isUser={true} />
+                  </View>
+                ) : item.msgType === 'file' && item.fileUrl ? (
+                  <FileMsg url={item.fileUrl} name={item.content} isUser={true} />
+                ) : (
+                  <View style={styles.userBubble}>
+                    <Text style={styles.userMsgText}>{item.content}</Text>
+                  </View>
+                )}
+                <View style={styles.userTail} />
+              </View>
             </View>
-            <View style={styles.userAvatar}>
-              <Text style={styles.userAvatarText}>我</Text>
+            <View style={styles.avatarUserBorder}>
+              <Image source={require('../assets/user_avatar.webp')} style={styles.avatarUserImg} />
             </View>
           </View>
         )}
@@ -232,15 +440,15 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <TouchableOpacity style={styles.headerBack} onPress={onClose}>
             <Text style={styles.backArrow}>‹</Text>
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>在线客服</Text>
-            <Text style={styles.headerSub}>
+            {/* <Text style={styles.headerSub}>
               {connected ? (agentAssigned ? '在线' : noAgent ? '暂无客服在线' : '等待分配...') : '连接中...'}
-            </Text>
+            </Text> */}
           </View>
           <View style={styles.headerRight} />
         </View>
@@ -267,11 +475,15 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
             renderItem={renderItem}
             contentContainerStyle={styles.listContent}
             onContentSizeChange={scrollToBottom}
+            showsVerticalScrollIndicator={false}
           />
         )}
 
         {/* 输入区 */}
         <View style={styles.inputContainer}>
+          <TouchableOpacity style={styles.attachBtn} onPress={handleAttachmentPress} disabled={uploading}>
+            <Text style={styles.attachBtnText}>+</Text>
+          </TouchableOpacity>
           <TextInput
             ref={inputRef}
             style={styles.textInput}
@@ -281,13 +493,20 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
             placeholderTextColor={colors.textDim}
             multiline
             maxLength={1000}
+            editable={!uploading}
           />
-          <TouchableOpacity
-            style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
-            onPress={sendMessage}
-            disabled={!inputText.trim()}>
-            <Text style={styles.sendBtnText}>发送</Text>
-          </TouchableOpacity>
+          {uploading ? (
+            <View style={styles.uploadingBtn}>
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
+              onPress={sendMessage}
+              disabled={!inputText.trim()}>
+              <Text style={styles.sendBtnText}>发送</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -305,16 +524,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
     paddingBottom: 12,
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
     shadowColor: '#000',
     shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 8,
+    elevation: 3,
   },
   headerBack: {
     width: 36,
@@ -325,7 +543,7 @@ const styles = StyleSheet.create({
   },
   backArrow: {
     fontSize: 28,
-    color: colors.primary,
+    color: '#222',
     fontWeight: '500',
     lineHeight: 30,
   },
@@ -390,42 +608,86 @@ const styles = StyleSheet.create({
     color: '#B8B8B8',
   },
 
-  /* Agent bubble (left) */
+  /* Message Row */
   agentRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 18,
+    marginBottom: 16,
     marginRight: 48,
   },
-  agentAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
+  avatarAgentWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
     flexShrink: 0,
+    marginRight: 8,
   },
-  agentAvatarText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#fff',
+  avatarAgent: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  avatarUser: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  avatarUserBorder: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    borderColor: 'rgba(37,99,235,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+    overflow: 'hidden',
+  },
+  avatarUserImg: {
+    width: 52,
+    height: 52,
+  },
+  agentContent: {
+    flex: 1,
+  },
+  agentBubbleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    position: 'relative',
+  },
+  agentTail: {
+    width: 0,
+    height: 0,
+    borderTopWidth: 8,
+    borderBottomWidth: 8,
+    borderRightWidth: 10,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderRightColor: '#fff',
+    position: 'absolute',
+    left: -8,
+    marginTop: 18,
+    zIndex: 2,
   },
   agentBubble: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    borderTopLeftRadius: 0,
     paddingHorizontal: 14,
     paddingVertical: 10,
+    marginTop: 6,
     shadowColor: '#000',
-    shadowOpacity: 0.07,
+    shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 3,
+    shadowRadius: 4,
     elevation: 1,
-    maxWidth: '80%',
+    zIndex: 1,
   },
-  msgText: {
+  agentMsgText: {
     fontSize: 15,
     lineHeight: 22,
     color: '#222',
@@ -436,31 +698,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'flex-start',
-    marginBottom: 18,
+    marginBottom: 16,
     marginLeft: 48,
   },
-  userAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-    flexShrink: 0,
+  userContent: {
+    alignItems: 'flex-end',
+    maxWidth: '75%',
   },
-  userAvatarText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#fff',
+  userBubbleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    position: 'relative',
   },
   userBubble: {
-    backgroundColor: '#4A90D9',
+    backgroundColor: '#2563eb',
     borderRadius: 12,
-    borderTopRightRadius: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    maxWidth: '80%',
+    borderTopRightRadius: 4,
+    padding: 2,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    zIndex: 1,
+  },
+  userBubbleImage: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderTopRightRadius: 4,
+    padding: 2,
+    marginTop: 6,
+    zIndex: 1,
+  },
+  userTail: {
+    width: 0,
+    height: 0,
+    borderTopWidth: 8,
+    borderBottomWidth: 8,
+    borderLeftWidth: 10,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: '#fff',
+    position: 'absolute',
+    right: -4,
+    marginTop: 18,
+    zIndex: 2,
   },
   userMsgText: {
     fontSize: 15,
@@ -494,7 +773,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   sendBtn: {
-    backgroundColor: '#4A90D9',
+    backgroundColor: colors.primary,
     borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 10,
@@ -508,6 +787,46 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
+  },
+
+  /* Attach button */
+  attachBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F0F0F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  attachBtnText: {
+    fontSize: 22,
+    color: '#666',
+    lineHeight: 24,
+    fontWeight: '600',
+  },
+
+  /* Uploading */
+  uploadingBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  agentBubbleImage: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderTopLeftRadius: 4,
+    padding: 2,
+    marginTop: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 4,
+    elevation: 1,
   },
 });
 

@@ -74,6 +74,48 @@ export function getUserId(): string {
 // ────────────────────────── REST API ──────────────────────────
 
 /**
+ * 上传文件/图片到客服系统
+ * @returns 上传后的文件 URL（相对路径）和原始文件名
+ */
+export async function uploadFile(file: {
+  uri: string;
+  type: string;
+  name: string;
+}): Promise<{ url: string; fileName: string } | null> {
+  try {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: file.uri,
+      type: file.type,
+      name: file.name,
+    } as any);
+
+    const response = await fetch(`${env.CS_API_BASE_URL}/api/message/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('uploadFile failed:', response.status, text);
+      return null;
+    }
+    return await response.json();
+  } catch (e) {
+    console.error('uploadFile error:', e);
+    return null;
+  }
+}
+
+/**
+ * 将后端返回的相对路径补全为完整的图片 URL
+ */
+export function getFullFileUrl(fileUrl?: string): string | undefined {
+  if (!fileUrl) return undefined;
+  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) return fileUrl;
+  return `${env.CS_API_BASE_URL}${fileUrl}`;
+}
+
+/**
  * 获取消息历史（支持按客服ID过滤）
  */
 export async function fetchHistory(userId: string, agentId?: string): Promise<ChatMessage[]> {

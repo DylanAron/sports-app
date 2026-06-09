@@ -9,6 +9,10 @@ import AnalysisScreen from '../screens/AnalysisScreen';
 import ScoreScreen from '../screens/ScoreScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import CustomerServiceScreen from '../screens/CustomerServiceScreen';
+import PrivacyScreen from '../screens/PrivacyScreen';
+import UserAgreementScreen from '../screens/UserAgreementScreen';
+import HelpScreen from '../screens/HelpScreen';
+import AboutScreen from '../screens/AboutScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -121,6 +125,26 @@ const Navigation: React.FC = () => {
         <Stack.Screen
           name="CustomerService"
           component={CustomerServiceScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="Privacy"
+          component={PrivacyScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="UserAgreement"
+          component={UserAgreementScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="Help"
+          component={HelpScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="About"
+          component={AboutScreen}
           options={{ animation: 'slide_from_right' }}
         />
       </Stack.Navigator>
