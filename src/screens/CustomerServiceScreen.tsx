@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   FlatList,
   TextInput,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { colors, fonts } from '../theme';
 import {
@@ -19,10 +19,10 @@ import {
   type ChatMessage,
   type WsConnection,
 } from '../services/chatService';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type Props = {
-  visible: boolean;
-  onClose: () => void;
+  navigation: NativeStackNavigationProp<any>;
 };
 
 /** 判断两个时间戳是否跨5分钟 */
@@ -38,7 +38,7 @@ function formatTime(ts?: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
+const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
   const userId = getUserId();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -58,10 +58,7 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
   }, []);
 
-  // ── 打开 Modal 时加载历史 + 连接 WS ──
   useEffect(() => {
-    if (!visible) return;
-
     setLoading(true);
     setConnected(false);
     setAgentAssigned(false);
@@ -72,7 +69,7 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
     pendingRef.current = [];
     agentIdRef.current = null;
 
-    // 建立 WebSocket 连接（不再预先加载历史，等分配客服后再按 agentId 过滤）
+    // 建立 WebSocket 连接，等分配客服后再按 agentId 过滤历史
     const ws = createWebSocketConnection(userId, {
       onOpen: () => setConnected(true),
       onMessage: (msg) => {
@@ -105,7 +102,6 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
             agentId: msg.agentId,
             _local: false,
           };
-          // 历史还没加载完 → 暂存，等加载完合并
           if (!historyLoadedRef.current) {
             pendingRef.current.push(newMsg);
           } else {
@@ -129,7 +125,6 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
           }
           scrollToBottom();
         }
-        // user_message 类型的 echo 忽略，已在发送时本地显示
       },
       onClose: () => setConnected(false),
     });
@@ -139,19 +134,18 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
       ws.close();
       wsRef.current = null;
     };
-  }, [visible, userId, scrollToBottom]);
+  }, [userId, scrollToBottom]);
 
-  // ── 新消息时滚动到底部 ──
+  // 新消息时滚动到底部
   useEffect(() => {
     if (messages.length > 0) scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // ── 发送消息 ──
+  // 发送消息
   const sendMessage = () => {
     const text = inputText.trim();
     if (!text || !wsRef.current) return;
 
-    // 本地先行显示
     const localMsg: ChatMessage = {
       content: text,
       msgType: 'text',
@@ -162,7 +156,6 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
     setMessages((prev) => [...prev, localMsg]);
     scrollToBottom();
 
-    // 发送到 WebSocket
     wsRef.current.send(
       JSON.stringify({
         type: 'user_message',
@@ -176,7 +169,7 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
     inputRef.current?.focus();
   };
 
-  // ── 渲染消息气泡 ──
+  // 渲染消息气泡
   const renderItem = ({ item, index }: { item: ChatMessage; index: number }) => {
     const prev = index > 0 ? messages[index - 1] : null;
     const showTime = !prev || isOver5Min(prev.timestamp || prev.createdAt, item.timestamp || item.createdAt);
@@ -226,71 +219,71 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.headerBack} onPress={onClose}>
-            <Text style={styles.backArrow}>‹</Text>
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>在线客服</Text>
-            <Text style={styles.headerSub}>
-              {connected ? (agentAssigned ? '在线' : noAgent ? '暂无客服在线' : '等待分配...') : '连接中...'}
-            </Text>
-          </View>
-          <View style={styles.headerRight} />
-        </View>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-        {/* 消息列表 */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        ) : messages.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyTitle}>您好！欢迎来到在线客服</Text>
-            <Text style={styles.emptySub}>
-              {noAgent
-                ? '当前没有在线客服，您可留言，我们会尽快回复您'
-                : '请描述您的问题，我们会尽快为您解答'}
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(_, i) => String(i)}
-            renderItem={renderItem}
-            contentContainerStyle={styles.listContent}
-            onContentSizeChange={scrollToBottom}
-          />
-        )}
-
-        {/* 输入区 */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            ref={inputRef}
-            style={styles.textInput}
-            value={inputText}
-            onChangeText={setInputText}
-            placeholder="请输入您的问题..."
-            placeholderTextColor={colors.textDim}
-            multiline
-            maxLength={1000}
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
-            onPress={sendMessage}
-            disabled={!inputText.trim()}>
-            <Text style={styles.sendBtnText}>发送</Text>
-          </TouchableOpacity>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.headerBack} onPress={() => navigation.goBack()}>
+          <Text style={styles.backArrow}>‹</Text>
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>在线客服</Text>
+          <Text style={styles.headerSub}>
+            {connected ? (agentAssigned ? '在线' : noAgent ? '暂无客服在线' : '等待分配...') : '连接中...'}
+          </Text>
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+        <View style={styles.headerRight} />
+      </View>
+
+      {/* 消息列表 */}
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : messages.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>您好！欢迎来到在线客服</Text>
+          <Text style={styles.emptySub}>
+            {noAgent
+              ? '当前没有在线客服，您可留言，我们会尽快回复您'
+              : '请描述您的问题，我们会尽快为您解答'}
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(_, i) => String(i)}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          onContentSizeChange={scrollToBottom}
+        />
+      )}
+
+      {/* 输入区 */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          ref={inputRef}
+          style={styles.textInput}
+          value={inputText}
+          onChangeText={setInputText}
+          placeholder="请输入您的问题..."
+          placeholderTextColor={colors.textDim}
+          multiline
+          maxLength={1000}
+        />
+        <TouchableOpacity
+          style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
+          onPress={sendMessage}
+          disabled={!inputText.trim()}>
+          <Text style={styles.sendBtnText}>发送</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -305,7 +298,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    paddingTop: Platform.OS === 'ios' ? 50 : StatusBar.currentHeight ? StatusBar.currentHeight + 8 : 20,
     paddingBottom: 12,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
@@ -511,4 +504,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default CustomerServiceModal;
+export default CustomerServiceScreen;

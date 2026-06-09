@@ -1,4 +1,5 @@
 import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { View, Text, StyleSheet } from 'react-native';
@@ -7,8 +8,10 @@ import HomeScreen from '../screens/HomeScreen';
 import AnalysisScreen from '../screens/AnalysisScreen';
 import ScoreScreen from '../screens/ScoreScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import CustomerServiceScreen from '../screens/CustomerServiceScreen';
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
 type TabIconProps = {
   label: string;
@@ -42,72 +45,85 @@ const tabStyles = StyleSheet.create({
   },
 });
 
+function TabNavigator() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: colors.tabBar,
+          borderTopColor: colors.tabBorder,
+          borderTopWidth: 1,
+          height: 65,
+          paddingBottom: 8,
+          paddingTop: 6,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textDim,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          letterSpacing: 1,
+          textDecorationLine: 'none',
+        },
+      }}>
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          tabBarLabel: 'AI',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="AI" icon="🤖" focused={focused} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Analysis"
+        component={AnalysisScreen}
+        options={{
+          tabBarLabel: '分析',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="分析" icon="📊" focused={focused} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Score"
+        component={ScoreScreen}
+        options={{
+          tabBarLabel: '比分',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="比分" icon="⚽" focused={focused} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: '我的',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="我的" icon="👤" focused={focused} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
 const Navigation: React.FC = () => {
   return (
     <NavigationContainer>
-      <Tab.Navigator
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: {
-            backgroundColor: colors.tabBar,
-            borderTopColor: colors.tabBorder,
-            borderTopWidth: 1,
-            height: 65,
-            paddingBottom: 8,
-            paddingTop: 6,
-            elevation: 0,
-            shadowOpacity: 0,
-          },
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.textDim,
-          tabBarLabelStyle: {
-            fontSize: 11,
-            fontWeight: '600',
-            letterSpacing: 1,
-            textDecorationLine: 'none',
-          },
-        }}>
-        <Tab.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{
-            tabBarLabel: 'AI',
-            tabBarIcon: ({ focused }) => (
-              <TabIcon label="AI" icon="🤖" focused={focused} />
-            ),
-          }}
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="MainTabs" component={TabNavigator} />
+        <Stack.Screen
+          name="CustomerService"
+          component={CustomerServiceScreen}
+          options={{ animation: 'slide_from_right' }}
         />
-        <Tab.Screen
-          name="Analysis"
-          component={AnalysisScreen}
-          options={{
-            tabBarLabel: '分析',
-            tabBarIcon: ({ focused }) => (
-              <TabIcon label="分析" icon="📊" focused={focused} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Score"
-          component={ScoreScreen}
-          options={{
-            tabBarLabel: '比分',
-            tabBarIcon: ({ focused }) => (
-              <TabIcon label="比分" icon="⚽" focused={focused} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Profile"
-          component={ProfileScreen}
-          options={{
-            tabBarLabel: '我的',
-            tabBarIcon: ({ focused }) => (
-              <TabIcon label="我的" icon="👤" focused={focused} />
-            ),
-          }}
-        />
-      </Tab.Navigator>
+      </Stack.Navigator>
     </NavigationContainer>
   );
 };

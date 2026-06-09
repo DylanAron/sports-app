@@ -8,12 +8,13 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { colors, fonts } from '../theme';
-import CustomerServiceModal from '../components/CustomerServiceModal';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 const ScoreScreen: React.FC = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
-  const [showCustomerService, setShowCustomerService] = useState(false);
 
   return (
     <View style={styles.container}>
@@ -115,7 +116,7 @@ const ScoreScreen: React.FC = () => {
       {/* ★ 透明遮罩 - 覆盖整个页面，点击任意位置 → 客服页面 */}
       <Pressable
         style={styles.overlay}
-        onPress={() => setShowCustomerService(false)}>
+        onPress={() => navigation.navigate('CustomerService')}>
         <View style={{ flex: 1 }} />
       </Pressable>
 
@@ -125,12 +126,6 @@ const ScoreScreen: React.FC = () => {
           <Text style={styles.adText}>{'📢  广告 · 赞助商  广告位招租'}</Text>
         </View>
       </View>
-
-      {/* 客服弹窗 */}
-      <CustomerServiceModal
-        visible={showCustomerService}
-        onClose={() => setShowCustomerService(false)}
-      />
 
     </View>
   );

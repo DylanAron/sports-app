@@ -8,8 +8,11 @@ import { userApi, getToken, setToken, aiApi } from '../services';
 import type { UserInfo } from '../services/userService';
 import LoginScreen from './profile/LoginScreen';
 import { WebView } from 'react-native-webview';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 const ProfileScreen: React.FC = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loggedIn, setLoggedIn] = useState(!!getToken());
   const [showLogin, setShowLogin] = useState(false);
@@ -296,7 +299,7 @@ const ProfileScreen: React.FC = () => {
     { icon: '🔔', label: '消息通知', onPress: () => setShowEssay(true), badge: '' },
     { icon: '❓', label: '帮助与反馈', onPress: () => showRichContent('help') },
     { icon: 'ℹ️', label: '关于我们', onPress: () => showRichContent('about') },
-    { icon: '📞', label: '联系客服', onPress: () => { } },
+    { icon: '📞', label: '联系客服', onPress: () => navigation.navigate('CustomerService') },
     { icon: '🔒', label: '隐私协议', onPress: () => setShowPrivacy(true) },
     { icon: '📄', label: '用户协议', onPress: () => setShowUserAgreement(true) },
   ] : [];
@@ -371,7 +374,7 @@ const ProfileScreen: React.FC = () => {
               {[
                 { icon: '❓', label: '帮助与反馈', onPress: () => showRichContent('help') },
                 { icon: 'ℹ️', label: '关于我们', onPress: () => showRichContent('about') },
-                { icon: '📞', label: '联系客服', onPress: () => { } },
+                { icon: '📞', label: '联系客服', onPress: () => navigation.navigate('CustomerService') },
                 { icon: '🔒', label: '隐私协议', onPress: () => setShowPrivacy(true) },
                 { icon: '📄', label: '用户协议', onPress: () => setShowUserAgreement(true) },
               ].map((item, idx) => (
