@@ -22,7 +22,7 @@ const ProfileScreen: React.FC = () => {
   const [htmlContent, setHtmlContent] = useState('');
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showUserAgreement, setShowUserAgreement] = useState(false);
-  const PRIVACY_URL = 'https://privacy.xqxq2.com/';
+  const PRIVACY_URL = 'https://6hlot.com/privacy/';
 
   // 用户服务协议 HTML
   const getUserAgreementHtml = (): string => {
