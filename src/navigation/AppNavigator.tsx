@@ -13,6 +13,7 @@ import PrivacyScreen from '../screens/PrivacyScreen';
 import UserAgreementScreen from '../screens/UserAgreementScreen';
 import HelpScreen from '../screens/HelpScreen';
 import AboutScreen from '../screens/AboutScreen';
+import PrivacyAgreementModal from '../components/PrivacyAgreementModal';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -148,6 +149,7 @@ const Navigation: React.FC = () => {
           options={{ animation: 'slide_from_right' }}
         />
       </Stack.Navigator>
+      <PrivacyAgreementModal />
     </NavigationContainer>
   );
 };

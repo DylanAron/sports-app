@@ -116,12 +116,7 @@ const AnalysisScreen: React.FC = () => {
             elevation: shadowElevation,
           },
         ]}>
-        <TouchableOpacity
-          activeOpacity={0.95}
-          onPress={() => {
-            if (index !== currentIndex) flatRef.current?.scrollToIndex({ index, animated: true });
-          }}>
-          <View style={styles.cardInner}>
+        <View style={styles.cardInner}>
             <View style={styles.leagueRow}>
               <Image source={item.leagueLogo ? { uri: item.leagueLogo } : DEFAULT_HOME} style={styles.leagueLogo} />
               <Text style={styles.leagueName}>{item.leagueName}</Text>
@@ -145,13 +140,12 @@ const AnalysisScreen: React.FC = () => {
 
             {item.content && (
               <View style={styles.contentBox}>
-                <View >
+                <ScrollView nestedScrollEnabled bounces={false} style={styles.contentScroll} showsVerticalScrollIndicator={false}>
                   <Text style={styles.contentText}>{item.content.replace(/<[^>]*>/g, '')}</Text>
-                </View>
+                </ScrollView>
               </View>
             )}
           </View>
-        </TouchableOpacity>
       </Animated.View>
     );
   };
@@ -194,7 +188,6 @@ const AnalysisScreen: React.FC = () => {
         />
       </View>
 
-      {/* 底部箭头 - 无背景色，直接透出 */}
       <View style={styles.paginationRow}>
         <TouchableOpacity onPress={goPrev} disabled={currentIndex === 0} style={styles.arrowHit}>
           <Text style={[styles.arrowText, currentIndex === 0 && styles.arrowDisabled]}>‹</Text>
@@ -229,11 +222,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.15,
     shadowRadius: 16,
+    overflow: 'hidden',
   },
   cardInner: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    backgroundColor: '#ffffff',
+    flex: 1,
   },
 
   leagueRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
@@ -248,8 +240,9 @@ const styles = StyleSheet.create({
   vsText: { fontSize: 16, color: '#94a3b8', fontWeight: '800' },
   scoreResultText: { fontSize: 12, color: '#dc2626', fontWeight: '700', marginTop: 2 },
 
-  contentBox: { paddingHorizontal: 16, paddingBottom: 16 },
-  contentText: { fontSize: 13, color: '#64748b', lineHeight: 20 },
+  contentBox: { paddingHorizontal: 16, paddingBottom: 16, flex: 1 },
+  contentScroll: { flex: 1 },
+  contentText: { fontSize: 13, color: '#64748b', lineHeight: 20, flexWrap: 'wrap' },
 
   paginationRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
