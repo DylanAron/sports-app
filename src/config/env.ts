@@ -15,21 +15,22 @@ interface EnvConfig {
 }
 
 const DEV: EnvConfig = {
-  API_BASE_URL: 'http://192.168.2.82:8086',
-  CS_API_BASE_URL: 'http://192.168.2.82:8089',
-  WS_BASE_URL: 'ws://192.168.2.82:9090',
+  API_BASE_URL: 'http://192.168.4.106:8086',
+  CS_API_BASE_URL: 'http://192.168.4.106:8089',
+  WS_BASE_URL: 'ws://192.168.4.106:9090/ws',
   ENV: 'development',
 };
 
 const PROD: EnvConfig = {
   API_BASE_URL: 'https://6hlot.com',
-  CS_API_BASE_URL: 'https://6hlot.com',
-  WS_BASE_URL: 'wss://6hlot.com',
+  CS_API_BASE_URL: 'https://cs.6hlot.com',
+  WS_BASE_URL: 'wss://cs.6hlot.com/ws',
   ENV: 'production',
 };
 
-// 切换环境：调试用 development，正式打包设 production
-const CURRENT_ENV: Environment = 'development';
+// 切换环境：development 使用 DEV，release/production 使用 PROD
+// __DEV__ 是 React Native 全局变量，true=开发模式，false=生产打包
+const CURRENT_ENV: Environment = __DEV__ ? 'development' : 'production';
 
 const config: Record<Environment, EnvConfig> = {
   development: DEV,

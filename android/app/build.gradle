@@ -82,8 +82,8 @@ android {
         applicationId "com.huojian.qlh"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.0.1"
     }
     signingConfigs {
         debug {
@@ -109,6 +109,15 @@ android {
             signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+
+    // APK 文件名带上版本号：app-release.1.0.1.apk
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            if (output.outputFile != null && output.outputFile.name.endsWith('.apk')) {
+                output.outputFileName = "app-${variant.name}.${defaultConfig.versionName}.apk"
+            }
         }
     }
 }

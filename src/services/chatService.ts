@@ -1,4 +1,5 @@
 import env from '../config/env';
+import { ensureDeviceId } from '../device/deviceId';
 
 /** 消息方向 */
 export type MessageDirection = 'user' | 'agent';
@@ -61,14 +62,24 @@ const USER_ID_KEY = '__CS_USER_ID__';
 
 /**
  * 获取当前会话的用户标识。
- * 基于项目已有模式（globalThis），每次 App 启动生成一次。
+ * 基于设备唯一 ID（Android ANDROID_ID / iOS identifierForVendor），
+ * 重装 app 后保持稳定。格式前缀 "u_" + deviceId。
  */
-export function getUserId(): string {
+let userIdPromise: Promise<string> | null = null;
+
+export async function getUserId(): Promise<string> {
   const existing = (globalThis as any)[USER_ID_KEY] as string | undefined;
   if (existing) return existing;
-  const uid = `u_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  (globalThis as any)[USER_ID_KEY] = uid;
-  return uid;
+
+  if (!userIdPromise) {
+    userIdPromise = ensureDeviceId().then((deviceId) => {
+      const uid = `u_${deviceId}`;
+      (globalThis as any)[USER_ID_KEY] = uid;
+      return uid;
+    });
+  }
+
+  return userIdPromise;
 }
 
 // ────────────────────────── REST API ──────────────────────────
@@ -142,7 +153,7 @@ export function createWebSocketConnection(
   userId: string,
   handlers: WsHandlers,
 ): WsConnection {
-  const url = `${env.WS_BASE_URL}/ws/user/${userId}`;
+  const url = `${env.WS_BASE_URL}/user/${userId}`;
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;

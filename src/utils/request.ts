@@ -1,4 +1,5 @@
 import env from '../config/env';
+import { ensureDeviceId } from '../device/deviceId';
 
 const BASE_URL = env.API_BASE_URL;
 
@@ -44,6 +45,14 @@ async function request<T = any>(url: string, options: RequestOptions = {}): Prom
     'Content-Type': 'application/json',
     ...headers,
   };
+
+  // 自动添加 deviceId
+  try {
+    const deviceId = await ensureDeviceId();
+    requestHeaders['X-Device-Id'] = deviceId;
+  } catch {
+    // 非致命：获取 deviceId 失败时不阻塞请求
+  }
 
   // 自动添加 token
   if (needAuth) {

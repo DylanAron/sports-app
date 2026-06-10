@@ -131,6 +131,13 @@ const FileMsg = ({ url, name, isUser }: { url: string; name: string; isUser: boo
   };
   const containerStyle = isUser ? styles.userBubble : styles.agentBubble;
 
+  // 文件名：优先使用 name 参数，为空才从 URL 提取
+  const fileName = (() => {
+    if (name) return name;
+    const parts = url.replace(/\\/g, '/').split('/').pop() || '';
+    return parts.split('?')[0] || '文件';
+  })();
+
   return (
     <TouchableOpacity onPress={handlePress} activeOpacity={0.7} style={containerStyle}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -144,7 +151,7 @@ const FileMsg = ({ url, name, isUser }: { url: string; name: string; isUser: boo
           }}
           numberOfLines={2}
           ellipsizeMode="middle">
-          {name}
+          {fileName}
         </Text>
       </View>
     </TouchableOpacity>
@@ -159,7 +166,7 @@ function formatTime(ts?: string): string {
 }
 
 const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
-  const userId = getUserId();
+  const [userId, setUserId] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [connected, setConnected] = useState(false);
@@ -192,72 +199,84 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
     pendingRef.current = [];
     agentIdRef.current = null;
 
-    // 建立 WebSocket 连接，等分配客服后再按 agentId 过滤历史
-    const ws = createWebSocketConnection(userId, {
-      onOpen: () => setConnected(true),
-      onMessage: (msg) => {
-        if (msg.type === 'system' && msg.agent_assigned) {
-          const assignedAgentId = msg.agent_assigned;
-          agentIdRef.current = assignedAgentId;
-          setCurrentAgentId(assignedAgentId);
-          setAgentAssigned(true);
-          setNoAgent(false);
+    let cancelled = false;
 
-          // 分配成功后，按 agentId 加载历史消息，避免串到其他客服的聊天记录
-          fetchHistory(userId, assignedAgentId).then((history) => {
-            setMessages([...history, ...pendingRef.current]);
-            pendingRef.current = [];
+    getUserId().then((uid) => {
+      if (cancelled) return;
+      setUserId(uid);
+
+      // 建立 WebSocket 连接，等分配客服后再按 agentId 过滤历史
+      const ws = createWebSocketConnection(uid, {
+        onOpen: () => setConnected(true),
+        onMessage: (msg) => {
+          if (msg.type === 'system' && msg.agent_assigned) {
+            const assignedAgentId = msg.agent_assigned;
+            agentIdRef.current = assignedAgentId;
+            setCurrentAgentId(assignedAgentId);
+            setAgentAssigned(true);
+            setNoAgent(false);
+
+            // 分配成功后，按 agentId 加载历史消息，避免串到其他客服的聊天记录
+            fetchHistory(uid, assignedAgentId).then((history) => {
+              setMessages([...history, ...pendingRef.current]);
+              pendingRef.current = [];
+              historyLoadedRef.current = true;
+              setLoading(false);
+              scrollToBottom();
+            });
+          } else if (msg.type === 'system' && msg.no_agent) {
+            setNoAgent(true);
             historyLoadedRef.current = true;
             setLoading(false);
+          } else if (msg.type === 'agent_message') {
+            const fileType = (msg.msgType as 'text' | 'image' | 'file') || 'text';
+            let fileContent = msg.content || '';
+            if (fileType === 'file' && !fileContent && msg.fileUrl) {
+              fileContent = msg.fileUrl.replace(/\\/g, '/').split('/').pop()?.split('?')[0] || '文件';
+            }
+            const newMsg: ChatMessage = {
+              content: fileContent,
+              msgType: fileType,
+              direction: (msg.direction as 'user' | 'agent') || 'agent',
+              fileUrl: msg.fileUrl,
+              timestamp: msg.timestamp,
+              agentId: msg.agentId,
+              _local: false,
+            };
+            if (!historyLoadedRef.current) {
+              pendingRef.current.push(newMsg);
+            } else {
+              setMessages((prev) => {
+                if (msg.timestamp && prev.find((m) => m.timestamp === msg.timestamp)) return prev;
+                return [...prev, newMsg];
+              });
+            }
             scrollToBottom();
-          });
-        } else if (msg.type === 'system' && msg.no_agent) {
-          setNoAgent(true);
-          historyLoadedRef.current = true;
-          setLoading(false);
-        } else if (msg.type === 'agent_message') {
-          const newMsg: ChatMessage = {
-            content: msg.content || '',
-            msgType: (msg.msgType as 'text' | 'image' | 'file') || 'text',
-            direction: (msg.direction as 'user' | 'agent') || 'agent',
-            fileUrl: msg.fileUrl,
-            timestamp: msg.timestamp,
-            agentId: msg.agentId,
-            _local: false,
-          };
-          if (!historyLoadedRef.current) {
-            pendingRef.current.push(newMsg);
-          } else {
-            setMessages((prev) => {
-              if (msg.timestamp && prev.find((m) => m.timestamp === msg.timestamp)) return prev;
-              return [...prev, newMsg];
-            });
+          } else if (msg.type === 'welcome_message') {
+            const welcomeMsg: ChatMessage = {
+              content: msg.content || '',
+              msgType: 'text',
+              direction: 'agent',
+              _welcome: true,
+            } as ChatMessage;
+            if (!historyLoadedRef.current) {
+              pendingRef.current.push(welcomeMsg);
+            } else {
+              setMessages((prev) => [...prev, welcomeMsg]);
+            }
+            scrollToBottom();
           }
-          scrollToBottom();
-        } else if (msg.type === 'welcome_message') {
-          const welcomeMsg: ChatMessage = {
-            content: msg.content || '',
-            msgType: 'text',
-            direction: 'agent',
-            _welcome: true,
-          } as ChatMessage;
-          if (!historyLoadedRef.current) {
-            pendingRef.current.push(welcomeMsg);
-          } else {
-            setMessages((prev) => [...prev, welcomeMsg]);
-          }
-          scrollToBottom();
-        }
-      },
-      onClose: () => setConnected(false),
+        },
+        onClose: () => setConnected(false),
+      });
+      wsRef.current = ws;
     });
-    wsRef.current = ws;
 
     return () => {
-      ws.close();
+      wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [userId, scrollToBottom]);
+  }, [scrollToBottom]);
 
   // 新消息时滚动到底部
   useEffect(() => {
@@ -388,8 +407,8 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
                 <View style={styles.agentTail} />
                 {item.msgType === 'image' && item.fileUrl ? (
                   <ImageMsg url={getFullFileUrl(item.fileUrl)!} isUser={false} />
-                ) : item.msgType === 'file' && item.fileUrl ? (
-                  <FileMsg url={item.fileUrl} name={item.content} isUser={false} />
+                ) : item.fileUrl || item.msgType === 'file' ? (
+                  <FileMsg url={item.fileUrl || ''} name={item.content} isUser={false} />
                 ) : isHtmlContent(item.content) ? (
                   <HtmlBubble html={item.content} />
                 ) : (
@@ -409,8 +428,8 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
                   <View style={styles.userBubbleImage}>
                     <ImageMsg url={getFullFileUrl(item.fileUrl)!} isUser={true} />
                   </View>
-                ) : item.msgType === 'file' && item.fileUrl ? (
-                  <FileMsg url={item.fileUrl} name={item.content} isUser={true} />
+                ) : item.fileUrl || item.msgType === 'file' ? (
+                  <FileMsg url={item.fileUrl || ''} name={item.content} isUser={true} />
                 ) : (
                   <View style={styles.userBubble}>
                     <Text style={styles.userMsgText}>{item.content}</Text>
