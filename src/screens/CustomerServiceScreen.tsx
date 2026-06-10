@@ -435,7 +435,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
                     <Text style={styles.userMsgText}>{item.content}</Text>
                   </View>
                 )}
-                <View style={styles.userTail} />
+                <View style={[styles.userTail, { borderLeftColor: (item.msgType === 'image' || item.fileUrl) ? '#fff' : '#2563eb' }]} />
               </View>
             </View>
             <View style={styles.userAvatarCol}>
