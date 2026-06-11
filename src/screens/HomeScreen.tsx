@@ -6,7 +6,6 @@ import CornerListScreen from './corner/CornerListScreen';
 import CornerDetailScreen from './corner/CornerDetailScreen';
 import AiListScreen from './corner/AiListScreen';
 import IntelligenceScreen from './corner/IntelligenceScreen';
-import type { CornerItem } from '../services/cornerService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

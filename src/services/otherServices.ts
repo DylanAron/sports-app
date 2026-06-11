@@ -10,25 +10,25 @@ export interface IntelligenceItem {
 
 export const goalApi = {
   list: (params?: { page?: number; pageSize?: number; isTodayData?: number }) =>
-    api.get<{total: number; page: number; pageSize: number; list: CornerItem[]}>('/api/goal/list', { params, needAuth: false }),
+    api.get<{total: number; page: number; pageSize: number; list: CornerItem[]}>('/goal/list', { params, needAuth: false }),
 };
 
 export const halfFullApi = {
   list: (params?: { page?: number; pageSize?: number; isTodayData?: number }) =>
-    api.get<{total: number; page: number; pageSize: number; list: CornerItem[]}>('/api/half-full/list', { params, needAuth: false }),
+    api.get<{total: number; page: number; pageSize: number; list: CornerItem[]}>('/half-full/list', { params, needAuth: false }),
 };
 
 export const scoreApi = {
   list: (params?: { page?: number; pageSize?: number; isTodayData?: number }) =>
-    api.get<{total: number; page: number; pageSize: number; list: CornerItem[]}>('/api/score/list', { params, needAuth: false }),
+    api.get<{total: number; page: number; pageSize: number; list: CornerItem[]}>('/score/list', { params, needAuth: false }),
 };
 
 export const winLoseApi = {
   list: (params?: { page?: number; pageSize?: number; isTodayData?: number }) =>
-    api.get<{total: number; page: number; pageSize: number; list: CornerItem[]}>('/api/win-lose/list', { params, needAuth: false }),
+    api.get<{total: number; page: number; pageSize: number; list: CornerItem[]}>('/win-lose/list', { params, needAuth: false }),
 };
 
 export const intelligenceApi = {
   recent: () =>
-    api.get<IntelligenceItem[]>('/api/intelligence/recent', { needAuth: false }),
+    api.get<IntelligenceItem[]>('/intelligence/recent', { needAuth: false }),
 };

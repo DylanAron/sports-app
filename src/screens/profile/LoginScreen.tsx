@@ -7,6 +7,7 @@ import {
 import { colors, fonts } from '../../theme';
 import { userApi } from '../../services';
 import { setToken } from '../../utils/request';
+import { logAction } from '../../device/appTrack';
 
 type Mode = 'login' | 'register';
 
@@ -33,6 +34,8 @@ const LoginScreen: React.FC<Props> = ({ onLoginSuccess, onClose }) => {
       } else {
         const res = await userApi.register({ username, password, nickname: nickname || undefined });
         setToken(res.token);
+        // 上报注册转化事件到百度归因
+        logAction("REGISTER");
       }
       onLoginSuccess();
     } catch (e: any) {

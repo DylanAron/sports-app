@@ -25,9 +25,9 @@ export interface LoginResult {
 }
 
 export const userApi = {
-  login: (data: LoginParams) => api.post<LoginResult>('/api/user/login', data, { needAuth: false }),
-  register: (data: RegisterParams) => api.post<LoginResult>('/api/user/register', data, { needAuth: false }),
-  getInfo: () => api.get<UserInfo>('/api/user/info', { needAuth: true }),
+  login: (data: LoginParams) => api.post<LoginResult>('/user/login', data, { needAuth: false }),
+  register: (data: RegisterParams) => api.post<LoginResult>('/user/register', data, { needAuth: false }),
+  getInfo: () => api.get<UserInfo>('/user/info', { needAuth: true }),
   updateProfile: (data: { nickname?: string; avatar?: string; bio?: string }) =>
-    api.put<UserInfo>('/api/user/profile', data, { needAuth: true }),
+    api.put<UserInfo>('/user/profile', data, { needAuth: true }),
 };

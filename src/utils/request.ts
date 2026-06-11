@@ -1,7 +1,9 @@
 import env from '../config/env';
 import { ensureDeviceId } from '../device/deviceId';
+import { encryptAES, decryptAES } from '../device/crypto';
 
 const BASE_URL = env.API_BASE_URL;
+const API_PREFIX = '/api/v2';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -30,8 +32,9 @@ async function request<T = any>(url: string, options: RequestOptions = {}): Prom
     needAuth = true,
   } = options;
 
-  // 拼接 query 参数
-  let fullUrl = BASE_URL + url;
+  // 配置接口不走 v2 前缀和加密
+  const isConfigUrl = url.includes('/api/app/config');
+  let fullUrl = isConfigUrl ? BASE_URL + url : BASE_URL + API_PREFIX + url;
   if (params) {
     const query = Object.entries(params)
       .filter(([_, v]) => v !== undefined && v !== null)
@@ -40,7 +43,6 @@ async function request<T = any>(url: string, options: RequestOptions = {}): Prom
     if (query) fullUrl += '?' + query;
   }
 
-  // 请求头
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     ...headers,
@@ -51,7 +53,7 @@ async function request<T = any>(url: string, options: RequestOptions = {}): Prom
     const deviceId = await ensureDeviceId();
     requestHeaders['X-Device-Id'] = deviceId;
   } catch {
-    // 非致命：获取 deviceId 失败时不阻塞请求
+    // 非致命
   }
 
   // 自动添加 token
@@ -62,29 +64,39 @@ async function request<T = any>(url: string, options: RequestOptions = {}): Prom
     }
   }
 
-  try {
-    const response = await fetch(fullUrl, {
-      method,
-      headers: requestHeaders,
-      body: data ? JSON.stringify(data) : undefined,
-    });
+  // v2 接口全走密文，配置接口走明文
+  const shouldEncrypt = !isConfigUrl;
 
-    const result = await response.json();
-
-    if (result.code !== 200) {
-      throw new HttpError(result.message || '请求失败', result.code);
-    }
-
-    return result.data as T;
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    throw new HttpError('网络请求失败，请检查网络连接', 0);
+  let body: string | undefined;
+  if (data) {
+    const jsonStr = JSON.stringify(data);
+    body = shouldEncrypt ? encryptAES(jsonStr) : jsonStr;
   }
+
+  const response = await fetch(fullUrl, { method, headers: requestHeaders, body });
+  const responseText = await response.text();
+
+  // 解密响应
+  let result: any;
+  if (shouldEncrypt && responseText) {
+    try {
+      result = JSON.parse(decryptAES(responseText));
+    } catch {
+      // 服务端未加密时回退明文
+      result = JSON.parse(responseText);
+    }
+  } else {
+    result = JSON.parse(responseText);
+  }
+
+  if (result.code !== 200) {
+    throw new HttpError(result.message || '请求失败', result.code);
+  }
+
+  return result.data as T;
 }
 
-// 存储 token（全局变量，生产环境建议用更安全的方式）
+// 存储 token（全局变量）
 globalThis.__AUTH_TOKEN__ = undefined as string | undefined;
 
 export function setToken(token: string | undefined) {

@@ -1,52 +1,65 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, StatusBar, Image, FlatList, ActivityIndicator, ScrollView, Dimensions, TouchableOpacity, Animated,
+  View, Text, StyleSheet, StatusBar, Image, ActivityIndicator, Dimensions, TouchableOpacity, Animated, Platform, ScrollView,
 } from 'react-native';
 import { colors, fonts } from '../theme';
 import { analysisApi } from '../services/analysisService';
 import type { AnalysisItem } from '../services/analysisService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.75;
 const CARD_GAP = 0;
 const SNAP_WIDTH = CARD_WIDTH + CARD_GAP;
 const SIDE_OFFSET = (SCREEN_WIDTH - CARD_WIDTH) / 2;
+const CARD_HEIGHT = SCREEN_HEIGHT - 200;
 
 const DEFAULT_HOME = require('../assets/ai/default_home_logo.webp');
 const DEFAULT_AWAY = require('../assets/ai/default_away_logo.webp');
 
-const LogoSafe = ({ uri, defaultImg, size }: { uri: string | null; defaultImg: any; size: number }) => {
+const LogoSafe = React.memo(({ uri, defaultImg, size }: { uri: string | null; defaultImg: any; size: number }) => {
   const [failed, setFailed] = React.useState(false);
   if (!uri || failed) return <Image source={defaultImg} style={{ width: size, height: size, borderRadius: size / 2 }} />;
   return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} onError={() => setFailed(true)} />;
+});
+
+const stripHtml = (html: string | null): string => {
+  if (!html) return '';
+  return html.replace(/<[^>]*>/g, '');
 };
 
 const AnalysisScreen: React.FC = () => {
   const [data, setData] = useState<AnalysisItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const flatRef = useRef<FlatList>(null);
+  const flatRef = useRef<Animated.FlatList<AnalysisItem>>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    try { setData(await analysisApi.recent()); } catch { setData([]); } finally { setLoading(false); }
+    try {
+      const raw = await analysisApi.recent();
+      // 预清洗 HTML 标签，避免渲染时反复正则
+      setData(raw.map((item) => ({ ...item, _contentPlain: stripHtml(item.content) })));
+    } catch {
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const goPrev = () => {
+  const goPrev = useCallback(() => {
     if (currentIndex > 0) {
-      const offset = (currentIndex - 1) * SNAP_WIDTH;
-      flatRef.current?.scrollToOffset({ offset, animated: true });
+      flatRef.current?.scrollToOffset({ offset: (currentIndex - 1) * SNAP_WIDTH, animated: true });
     }
-  };
+  }, [currentIndex]);
 
-  const goNext = () => {
+  const goNext = useCallback(() => {
     if (currentIndex < data.length - 1) {
-      const offset = (currentIndex + 1) * SNAP_WIDTH;
-      flatRef.current?.scrollToOffset({ offset, animated: true });
+      flatRef.current?.scrollToOffset({ offset: (currentIndex + 1) * SNAP_WIDTH, animated: true });
     }
-  };
+  }, [currentIndex, data.length]);
 
   const onScrollEnd = (e: any) => {
     const x = e.nativeEvent.contentOffset.x;
@@ -54,20 +67,21 @@ const AnalysisScreen: React.FC = () => {
     setCurrentIndex(Math.max(0, Math.min(index, data.length - 1)));
   };
 
-  const renderItem = ({ item, index }: { item: AnalysisItem; index: number }) => {
+  const renderItem = useCallback(({ item, index }: { item: AnalysisItem; index: number }) => {
     const inputRange = [
       (index - 1) * SNAP_WIDTH - 10,
       index * SNAP_WIDTH,
       (index + 1) * SNAP_WIDTH + 10,
     ];
 
+    // 全部跑在原生线程，无 JS 线程开销
     const scale = scrollX.interpolate({
       inputRange,
-      outputRange: [0.82, 1.05, 0.82],
+      outputRange: [0.85, 1.0, 0.85],
       extrapolate: 'clamp',
     });
 
-    const cardOpacity = scrollX.interpolate({
+    const opacity = scrollX.interpolate({
       inputRange,
       outputRange: [0.5, 1.0, 0.5],
       extrapolate: 'clamp',
@@ -75,80 +89,62 @@ const AnalysisScreen: React.FC = () => {
 
     const translateY = scrollX.interpolate({
       inputRange,
-      outputRange: [20, -10, 20],
+      outputRange: [20, 0, 20],
       extrapolate: 'clamp',
     });
 
-    const border = scrollX.interpolate({
-      inputRange,
-      outputRange: [0, 1, 0],
-      extrapolate: 'clamp',
-    });
-
-    const borderColor = border.interpolate({
-      inputRange: [0, 1],
-      outputRange: ['#eef1f5', '#2563eb'],
-    });
-
-    const shadowOpacityVal = scrollX.interpolate({
-      inputRange,
-      outputRange: [0.06, 0.4, 0.06],
-      extrapolate: 'clamp',
-    });
-
-    const shadowElevation = scrollX.interpolate({
-      inputRange,
-      outputRange: [3, 12, 3],
-      extrapolate: 'clamp',
-    });
+    const plainContent = item._contentPlain || stripHtml(item.content);
+    const isActive = index === currentIndex;
 
     return (
       <Animated.View
         style={[
           styles.cardWrapper,
+          isActive ? styles.cardActive : styles.cardInactive,
           {
             width: CARD_WIDTH,
-            marginRight: CARD_GAP,
+            height: CARD_HEIGHT,
             transform: [{ scale }, { translateY }],
-            opacity: cardOpacity,
-            borderColor,
-            shadowOpacity: shadowOpacityVal,
-            elevation: shadowElevation,
+            opacity,
           },
         ]}>
         <View style={styles.cardInner}>
-            <View style={styles.leagueRow}>
-              <Image source={item.leagueLogo ? { uri: item.leagueLogo } : DEFAULT_HOME} style={styles.leagueLogo} />
-              <Text style={styles.leagueName}>{item.leagueName}</Text>
-              <Text style={styles.matchDate}>{item.matchTime?.slice(0, 10) || ''}</Text>
-            </View>
-
-            <View style={styles.matchRow}>
-              <View style={styles.teamCol}>
-                <LogoSafe uri={item.homeLogo} defaultImg={DEFAULT_HOME} size={48} />
-                <Text style={styles.teamName} numberOfLines={1}>{item.homeName}</Text>
-              </View>
-              <View style={styles.vsCol}>
-                <Text style={styles.vsText}>VS</Text>
-                {item.scoreResult && <Text style={styles.scoreResultText}>{item.scoreResult}</Text>}
-              </View>
-              <View style={styles.teamCol}>
-                <LogoSafe uri={item.awayLogo} defaultImg={DEFAULT_AWAY} size={48} />
-                <Text style={styles.teamName} numberOfLines={1}>{item.awayName}</Text>
-              </View>
-            </View>
-
-            {item.content && (
-              <View style={styles.contentBox}>
-                <ScrollView nestedScrollEnabled bounces={false} style={styles.contentScroll} showsVerticalScrollIndicator={false}>
-                  <Text style={styles.contentText}>{item.content.replace(/<[^>]*>/g, '')}</Text>
-                </ScrollView>
-              </View>
-            )}
+          <View style={styles.leagueRow}>
+            <Image source={item.leagueLogo ? { uri: item.leagueLogo } : DEFAULT_HOME} style={styles.leagueLogo} />
+            <Text style={styles.leagueName}>{item.leagueName}</Text>
+            <Text style={styles.matchDate}>{item.matchTime?.slice(0, 10) || ''}</Text>
           </View>
+
+          <View style={styles.matchRow}>
+            <View style={styles.teamCol}>
+              <LogoSafe uri={item.homeLogo} defaultImg={DEFAULT_HOME} size={48} />
+              <Text style={styles.teamName} numberOfLines={1}>{item.homeName}</Text>
+            </View>
+            <View style={styles.vsCol}>
+              <Text style={styles.vsText}>VS</Text>
+              {item.scoreResult && <Text style={styles.scoreResultText}>{item.scoreResult}</Text>}
+            </View>
+            <View style={styles.teamCol}>
+              <LogoSafe uri={item.awayLogo} defaultImg={DEFAULT_AWAY} size={48} />
+              <Text style={styles.teamName} numberOfLines={1}>{item.awayName}</Text>
+            </View>
+          </View>
+
+          {(item.content || item._contentPlain) && (
+            <View style={styles.contentBox}>
+              <ScrollView
+                style={styles.contentScroll}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                bounces={false}>
+                <Text style={styles.contentText}>{plainContent}</Text>
+              </ScrollView>
+            </View>
+          )}
+        </View>
       </Animated.View>
     );
-  };
+  }, [scrollX, currentIndex]);
 
   if (loading) {
     return (
@@ -167,41 +163,52 @@ const AnalysisScreen: React.FC = () => {
       </View>
 
       <View style={styles.carouselArea}>
-        <FlatList
+        <Animated.FlatList
           ref={flatRef}
           data={data}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingStart: SIDE_OFFSET, paddingEnd: SIDE_OFFSET - CARD_GAP, paddingTop: 50, paddingBottom: 20 }}
-          keyExtractor={item => String(item.id)}
+          contentContainerStyle={{
+            paddingStart: SIDE_OFFSET,
+            paddingEnd: SIDE_OFFSET - CARD_GAP,
+            paddingTop: 30,
+            paddingBottom: 50,
+          }}
+          keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-            { useNativeDriver: false },
+            { useNativeDriver: true },
           )}
           scrollEventThrottle={16}
           onMomentumScrollEnd={onScrollEnd}
           snapToInterval={SNAP_WIDTH}
           snapToAlignment="start"
           decelerationRate="fast"
-          ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyText}>暂无分析数据</Text></View>}
+          removeClippedSubviews={Platform.OS === 'android'}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>暂无分析数据</Text>
+            </View>
+          }
         />
-      </View>
 
-      <View style={styles.paginationRow}>
-        <TouchableOpacity onPress={goPrev} disabled={currentIndex === 0} style={styles.arrowHit}>
-          <Text style={[styles.arrowText, currentIndex === 0 && styles.arrowDisabled]}>‹</Text>
-        </TouchableOpacity>
+        {/* 左右箭头 + 分页点，贴在卡片底部 */}
+        <View style={styles.paginationRow}>
+          <TouchableOpacity onPress={goPrev} disabled={currentIndex === 0} style={styles.arrowHit}>
+            <Text style={[styles.arrowText, currentIndex === 0 && styles.arrowDisabled]}>‹</Text>
+          </TouchableOpacity>
 
-        <View style={styles.pagination}>
-          {data.map((_, idx) => (
-            <View key={idx} style={[styles.dot, idx === currentIndex && styles.dotActive]} />
-          ))}
+          <View style={styles.pagination}>
+            {data.map((_, idx) => (
+              <View key={idx} style={[styles.dot, idx === currentIndex && styles.dotActive]} />
+            ))}
+          </View>
+
+          <TouchableOpacity onPress={goNext} disabled={currentIndex === data.length - 1} style={styles.arrowHit}>
+            <Text style={[styles.arrowText, currentIndex === data.length - 1 && styles.arrowDisabled]}>›</Text>
+          </TouchableOpacity>
         </View>
-
-        <TouchableOpacity onPress={goNext} disabled={currentIndex === data.length - 1} style={styles.arrowHit}>
-          <Text style={[styles.arrowText, currentIndex === data.length - 1 && styles.arrowDisabled]}>›</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -222,11 +229,19 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.15,
     shadowRadius: 16,
+    elevation: 6,
     overflow: 'hidden',
   },
-  cardInner: {
-    flex: 1,
+  cardInactive: {
+    borderColor: '#eef1f5',
   },
+  cardActive: {
+    borderColor: '#2563eb',
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  cardInner: { flex: 1 },
 
   leagueRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
   leagueLogo: { width: 20, height: 20, borderRadius: 10, marginRight: 8 },
@@ -240,9 +255,9 @@ const styles = StyleSheet.create({
   vsText: { fontSize: 16, color: '#94a3b8', fontWeight: '800' },
   scoreResultText: { fontSize: 12, color: '#dc2626', fontWeight: '700', marginTop: 2 },
 
-  contentBox: { paddingHorizontal: 16, paddingBottom: 16, flex: 1 },
+  contentBox: { paddingHorizontal: 16, paddingBottom: 16, flex: 1, minHeight: 120 },
   contentScroll: { flex: 1 },
-  contentText: { fontSize: 13, color: '#64748b', lineHeight: 20, flexWrap: 'wrap' },
+  contentText: { fontSize: 13, color: '#64748b', lineHeight: 20 },
 
   paginationRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

@@ -23,7 +23,7 @@ export interface PageData<T> {
 
 export const cornerApi = {
   list: (params?: { page?: number; pageSize?: number; isTodayData?: number }) =>
-    api.get<PageData<CornerItem>>('/api/corner/list', { params, needAuth: false }),
+    api.get<PageData<CornerItem>>('/corner/list', { params, needAuth: false }),
   detail: (id: number) =>
-    api.get<CornerItem>(`/api/corner/detail/${id}`, { needAuth: false }),
+    api.get<CornerItem>(`/corner/detail/${id}`, { needAuth: false }),
 };

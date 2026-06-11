@@ -5,10 +5,10 @@ export interface ContentResult {
 }
 
 export const contentApi = {
-  getHelp: () => api.get<ContentResult>('/api/content/help', { needAuth: false }),
-  getAbout: () => api.get<ContentResult>('/api/content/about', { needAuth: false }),
+  getHelp: () => api.get<ContentResult>('/content/help', { needAuth: false }),
+  getAbout: () => api.get<ContentResult>('/content/about', { needAuth: false }),
 };
 
 export const aiApi = {
-  getEssay: () => api.get<{ content: string }>('/api/ai/essay', { needAuth: true }),
+  getEssay: () => api.get<{ content: string }>('/ai/essay', { needAuth: true }),
 };

@@ -179,6 +179,7 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
   const historyLoadedRef = useRef(false);
   const pendingRef = useRef<ChatMessage[]>([]);
   const agentIdRef = useRef<string | null>(null);
+  const welcomeShownRef = useRef(false);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const insets = useSafeAreaInsets();
@@ -212,6 +213,9 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
       onOpen: () => setConnected(true),
       onMessage: (msg) => {
         if (msg.type === 'system' && msg.agent_assigned) {
+          // 重连时如果已有客服，不再重复拉历史
+          if (historyLoadedRef.current && agentIdRef.current) return
+
           const assignedAgentId = msg.agent_assigned;
           agentIdRef.current = assignedAgentId;
           setCurrentAgentId(assignedAgentId);
@@ -228,6 +232,9 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
           });
         } else if (msg.type === 'system' && msg.no_agent) {
           setNoAgent(true);
+          const pending = pendingRef.current;
+          pendingRef.current = [];
+          setMessages([...pending]);
           historyLoadedRef.current = true;
           setLoading(false);
         } else if (msg.type === 'agent_message') {
@@ -256,6 +263,9 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
           }
           scrollToBottom();
         } else if (msg.type === 'welcome_message') {
+          // 每次进入页面只弹一次欢迎语，重连不再重复
+          if (welcomeShownRef.current) return
+          welcomeShownRef.current = true
           const welcomeMsg: ChatMessage = {
             content: msg.content || '',
             msgType: 'text',

@@ -22,3 +22,11 @@ buildscript {
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+allprojects {
+    repositories {
+        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://developer.huawei.com/repo") }
+        maven { url = uri("https://developer.hihonor.com/repo") }
+    }
+}

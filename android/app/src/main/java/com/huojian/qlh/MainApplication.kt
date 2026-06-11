@@ -1,6 +1,8 @@
 package com.huojian.qlh
 
 import android.app.Application
+import android.util.Log
+import com.baidu.mobads.action.BaiduAction
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -14,10 +16,9 @@ class MainApplication : Application(), ReactApplication {
       context = applicationContext,
       packageList =
         PackageList(this).packages.apply {
-          // Packages that cannot be autolinked yet can be added manually here, for example:
-          // add(MyReactNativePackage())
           add(SingleFlingScrollPackage())
           add(DeviceIdPackage())
+          add(AppTrackPackage())
         },
     )
   }
@@ -25,5 +26,11 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     loadReactNative(this)
+
+    // debug 构建不初始化百度 oCPX SDK，避免测试数据上报
+    if (BuildConfig.DEBUG) {
+      Log.d("MainApplication", "Debug build, skip Baidu oCPX SDK initialization")
+      return
+    }
   }
 }
