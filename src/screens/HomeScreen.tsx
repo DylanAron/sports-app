@@ -155,9 +155,9 @@ const HomeScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* 轮播图 */}
+        {/* 轮播图 — 无论有无数据都占位 */}
         <View style={styles.bannerSection}>
-          {banners.length > 0 && (
+          {banners.length > 0 ? (
             <>
               <FlatList
                 ref={bannerRef}
@@ -181,6 +181,9 @@ const HomeScreen: React.FC = () => {
                 ))}
               </View>
             </>
+          ) : (
+            // 数据加载前占位，防止底部 AI 卡片上浮
+            <View style={styles.bannerPlaceholder} />
           )}
         </View>
 
@@ -227,6 +230,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: '800', color: '#2563eb', letterSpacing: 3 },
   subtitle: { fontSize: 11, color: '#94a3b8', letterSpacing: 5, marginTop: 3 },
   bannerSection: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 },
+  bannerPlaceholder: { width: BANNER_WIDTH, height: 100, borderRadius: 14 },
   bannerImg: { width: BANNER_WIDTH, height: 100, borderRadius: 14, resizeMode: 'contain' },
   bannerDots: { flexDirection: 'row', justifyContent: 'center', marginTop: 6, gap: 6 },
   bannerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#d0d8e0' },
