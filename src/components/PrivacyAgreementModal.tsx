@@ -18,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reportActivation, setPrivacyAgreed, getDeviceInfo } from '../device/appTrack';
 import { ensureDeviceId } from '../device/deviceId';
+import { activationApi, PACKAGE_ID } from '../services';
 import env from '../config/env';
 
 const AGREEMENT_KEY = '@privacy_agreed';
@@ -75,14 +76,26 @@ const PrivacyAgreementModal: React.FC = () => {
     // 1. 通知百度 oCPX SDK 用户已同意隐私协议（SDK 已在 Application.onCreate 中初始化）
     setPrivacyAgreed(true);
 
-    // 2. 上报激活事件
+    // 2. 上报激活事件（百度归因）
     try {
       await reportActivation();
     } catch {
       // 非致命
     }
 
-    // 3. 归因调试弹窗：环境变量 SHOW_ATTRIBUTION_DEBUG 控制
+    // 3. 上报自有业务激活数据
+    try {
+      const deviceId = await ensureDeviceId();
+      await activationApi.report({
+        deviceId,
+        marketId: 1,
+        packageId: PACKAGE_ID,
+      });
+    } catch {
+      // 非致命，不影响用户进入app
+    }
+
+    // 4. 归因调试弹窗：环境变量 SHOW_ATTRIBUTION_DEBUG 控制
     if (env.SHOW_ATTRIBUTION_DEBUG) {
       try {
         const deviceInfo = await getDeviceInfo();
