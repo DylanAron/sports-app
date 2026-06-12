@@ -35,7 +35,12 @@ const LoginScreen: React.FC<Props> = ({ onLoginSuccess, onClose }) => {
         const res = await userApi.register({ username, password, nickname: nickname || undefined });
         setToken(res.token);
         // 上报注册转化事件到百度归因
-        logAction("REGISTER");
+        try {
+          const msg = await logAction("REGISTER");
+          Alert.alert('归因上报', msg);
+        } catch (e: any) {
+          Alert.alert('归因上报失败', e?.message || e || '未知错误');
+        }
       }
       onLoginSuccess();
     } catch (e: any) {

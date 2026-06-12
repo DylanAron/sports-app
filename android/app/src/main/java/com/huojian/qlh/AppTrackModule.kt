@@ -1,11 +1,9 @@
 package com.huojian.qlh
 
-import android.Manifest
-import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import androidx.core.content.ContextCompat
 import com.baidu.mobads.action.BaiduAction
 import com.baidu.mobads.action.PrivacyStatus
 import com.facebook.react.bridge.Promise
@@ -17,63 +15,31 @@ import kotlin.concurrent.thread
 
 class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
-    companion object {
-        private var sdkInitialized = false
-    }
-
     override fun getName(): String = "AppTrackModule"
 
     /**
-     * 从 JS 层获取 BD_APP_ID 和 APP_SECRET 后初始化 SDK
-     * APP_SECRET 从服务端获取，不硬编码在客户端
+     * SDK 已在 MainApplication.onCreate 中初始化（release 构建）。
+     * debug 构建跳过初始化以防止测试数据上报，此时所有上报接口均不可用。
      */
-    @ReactMethod
-    fun initSdk(appId: Double, appSecret: String) {
-        if (sdkInitialized) {
-            Log.d("AppTrack", "SDK already initialized, skip")
-            return
-        }
-        if (BuildConfig.DEBUG) {
-            Log.d("AppTrack", "Debug build, skip Baidu oCPX SDK init from JS")
-            return
-        }
-        try {
-            BaiduAction.setPrintLog(BuildConfig.DEBUG)
-            BaiduAction.init(
-                reactApplicationContext,
-                appId.toLong(),
-                appSecret
-            )
-            BaiduAction.setActivateInterval(reactApplicationContext, 30)
-
-            // 回传运行时权限状态
-            BaiduAction.onRequestPermissionsResult(
-                1024,
-                arrayOf(Manifest.permission.READ_PHONE_STATE),
-                if (ContextCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED)
-                    intArrayOf(0) else intArrayOf(-1)
-            )
-            sdkInitialized = true
-            Log.d("AppTrack", "SDK initialized from JS, appId=$appId")
-        } catch (e: Exception) {
-            Log.e("AppTrack", "Failed to init SDK", e)
-        }
-    }
+    private val sdkReady: Boolean
+        get() = !BuildConfig.DEBUG
 
     /**
      * 上报激活转化事件
      */
     @ReactMethod
-    fun reportActivation() {
-        if (!sdkInitialized) {
-            Log.w("AppTrack", "SDK not initialized, activation skipped")
+    fun reportActivation(promise: Promise) {
+        if (!sdkReady) {
+            promise.reject("SDK_NOT_INIT", "Debug 构建跳过百度归因")
             return
         }
         try {
             BaiduAction.logAction("ACTIVATE")
             Log.d("AppTrack", "Activation event reported")
+            promise.resolve("已记录激活事件，等待SDK上报")
         } catch (e: Exception) {
             Log.e("AppTrack", "Failed to report activation", e)
+            promise.reject("LOG_FAILED", "激活上报失败: ${e.message}")
         }
     }
 
@@ -81,9 +47,9 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
      * 上报自定义转化事件
      */
     @ReactMethod
-    fun logAction(actionType: String, actionParam: String = "") {
-        if (!sdkInitialized) {
-            Log.w("AppTrack", "SDK not initialized, action $actionType skipped")
+    fun logAction(actionType: String, actionParam: String = "", promise: Promise) {
+        if (!sdkReady) {
+            promise.reject("SDK_NOT_INIT", "百度归因SDK未初始化（debug 构建跳过）")
             return
         }
         try {
@@ -93,13 +59,16 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
             } else {
                 BaiduAction.logAction(actionType)
             }
+            Log.d("AppTrack", "Action logged: $actionType")
+            promise.resolve("已记录归因事件，等待SDK上报")
         } catch (e: Exception) {
             Log.e("AppTrack", "Failed to log action", e)
+            promise.reject("LOG_FAILED", "上报失败: ${e.message}")
         }
     }
 
     /**
-     * 设置用户隐私授权状态
+     * 设置用户隐私授权状态，用户同意后同时设置 OAID
      */
     @ReactMethod
     fun setPrivacyAgreed(agreed: Boolean) {
@@ -111,7 +80,19 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
             Log.d("AppTrack", "Privacy status set: ${if (agreed) "AGREE" else "DISAGREE"}")
 
             if (agreed) {
+                // 注册 OAID 监听（Android_CN_OAID 库）
                 DeviceIdentifier.register(reactApplicationContext.getApplicationContext() as android.app.Application)
+
+                // 获取 OAID 并传给百度 SDK（SDK 内部已关闭自动采集）
+                thread {
+                    val oaid = fetchOaid(reactApplicationContext)
+                    if (oaid.isNotBlank()) {
+                        BaiduAction.setOaid(oaid)
+                        Log.d("AppTrack", "OAID set to BaiduAction: $oaid")
+                    } else {
+                        Log.w("AppTrack", "OAID is empty, not setting to BaiduAction")
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e("AppTrack", "Failed to set privacy status", e)
@@ -139,8 +120,12 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
             ctx.contentResolver,
             android.provider.Settings.Secure.ANDROID_ID
         ) ?: ""
+        val sdkInt = Build.VERSION.SDK_INT
 
         Log.d("AppTrack", "========== ANDROID_ID: $androidId ==========")
+        Log.d("AppTrack", "========== SDK_INT: $sdkInt ==========")
+        Log.d("AppTrack", "========== BRAND: ${Build.BRAND} ==========")
+        Log.d("AppTrack", "========== MODEL: ${Build.MODEL} ==========")
 
         thread {
             try {
@@ -154,6 +139,10 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
                     map.putString("androidId", androidId)
                     map.putString("oaid", oaid)
                     map.putString("guid", guid)
+                    map.putString("imei", "")
+                    map.putString("sdkInt", sdkInt.toString())
+                    map.putString("brand", Build.BRAND)
+                    map.putString("model", Build.MODEL)
                     promise.resolve(map)
                 }
             } catch (e: Exception) {
@@ -163,6 +152,10 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
                     map.putString("androidId", androidId)
                     map.putString("oaid", "")
                     map.putString("guid", "")
+                    map.putString("imei", "")
+                    map.putString("sdkInt", sdkInt.toString())
+                    map.putString("brand", Build.BRAND)
+                    map.putString("model", Build.MODEL)
                     promise.resolve(map)
                 }
             }

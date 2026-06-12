@@ -90,6 +90,11 @@ async function request<T = any>(url: string, options: RequestOptions = {}): Prom
   }
 
   if (result.code !== 200) {
+    // token 过期自动退出登录
+    if (result.code === 401) {
+      setToken(undefined);
+      _onTokenExpired?.();
+    }
     throw new HttpError(result.message || '请求失败', result.code);
   }
 
@@ -98,6 +103,12 @@ async function request<T = any>(url: string, options: RequestOptions = {}): Prom
 
 // 存储 token（全局变量）
 globalThis.__AUTH_TOKEN__ = undefined as string | undefined;
+
+/** token 过期回调 */
+let _onTokenExpired: (() => void) | null = null;
+export function setOnTokenExpired(cb: () => void) {
+  _onTokenExpired = cb;
+}
 
 export function setToken(token: string | undefined) {
   globalThis.__AUTH_TOKEN__ = token;

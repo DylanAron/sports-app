@@ -1,17 +1,20 @@
-# Add project specific ProGuard rules here.
-# By default, the flags in this file are appended to flags specified
-# in /usr/local/Cellar/android-sdk/24.3.3/tools/proguard/proguard-android.txt
-# You can edit the include path and order by changing the proguardFiles
-# directive in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# 百度 oCPX 转化追踪 SDK - AppTrack 归因 v2.7.3
+-dontusemixedcaseclassnames
+-dontskipnonpubliclibraryclasses
+-dontpreverify
+-dontoptimize
+-renamesourcefileattribute SourceFile
+-keepattributes InnerClasses
 
-# Add any project specific keep options here:
+-keep class com.baidu.mobads.action.ActionType { public protected *; }
+-keep class com.baidu.mobads.action.ActionParam { public protected *; }
+-keep class com.baidu.mobads.action.ActionParam$* { public protected *; }
+-keep class com.baidu.mobads.action.BaiduAction { public protected *; }
+-keep class com.baidu.mobads.action.PrivacyStatus { public *; }
 
-# 百度 oCPX 转化追踪 SDK - AppTrack 归因
--dontwarn com.baidu.mobads.action.**
--keep class com.baidu.mobads.action.** {*;}
+# react-native-screens JNI
+-keep class com.swmansion.rnscreens.** { *; }
+-keep class com.facebook.jni.** { *; }
 -keep, includedescriptorclasses class com.asus.msa.SupplementaryDID.** { *; }
 -keepclasseswithmembernames class com.asus.msa.SupplementaryDID.** { *; }
 -keep, includedescriptorclasses class com.asus.msa.sdid.** { *; }
@@ -19,9 +22,13 @@
 -keep public class com.netease.nis.sdkwrapper.Utils {public <methods>;}
 -keep class com.bun.miitmdid.**{*;}
 -keep class com.bun.lib.**{*;}
+-keep class com.bun.miitmdid.core.MdidSdkHelper { *; }
+-dontwarn com.bun.miitmdid.core.MdidSdkHelper
+-dontwarn com.bun.miitmdid.interfaces.IIdentifierListener
+-dontwarn com.bun.miitmdid.interfaces.IdSupplier
+-dontwarn com.bun.miitmdid.pojo.IdSupplierImpl
 -keep class com.samsung.android.deviceidservice.**{*;}
 -keep class a.**{*;}
-
-# Android_CN_OAID 设备标识库
--keep class com.github.gzuliyujiang.oaid.** { *; }
--keep interface com.github.gzuliyujiang.oaid.** { *; }
+-keep class * implements android.os.Parcelable {
+  public static final android.os.Parcelable$Creator *;
+}
