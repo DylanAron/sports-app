@@ -3,9 +3,14 @@ import { NativeModules, Platform } from 'react-native';
 const { AppTrackModule } = NativeModules;
 
 /**
- * SDK 已在 MainApplication.onCreate 中完成初始化（密钥写死客户端）。
- * 以下接口直接调上报即可。
+ * 初始化百度 oCPX SDK（用户同意隐私协议后调用）
+ * 返回 Promise，初始化完成后 resolve
  */
+export function initSdk(bdAppId: number, appSecret: string): Promise<void> {
+  if (Platform.OS !== 'android') return Promise.reject(new Error('非 Android 平台'));
+  if (!AppTrackModule) return Promise.reject(new Error('Native 模块不可用'));
+  return AppTrackModule.initSdk(bdAppId, appSecret);
+}
 
 /**
  * 上报激活事件到百度移动统计（AppTrack 归因）
@@ -19,7 +24,6 @@ export function reportActivation(): Promise<string> {
 
 /**
  * 设置用户隐私授权状态（文档要求必须调用）
- * 在用户同意或拒绝隐私协议时调用
  */
 export function setPrivacyAgreed(agreed: boolean): void {
   if (Platform.OS !== 'android') return;
@@ -33,9 +37,6 @@ export function setPrivacyAgreed(agreed: boolean): void {
 
 /**
  * 上报自定义转化事件
- * @param actionType - 转化类型（REGISTER, PURCHASE 等）
- * @param actionParam - 扩展参数对象（可选）
- * @returns Promise，resolve 表示上报成功，reject 为失败原因
  */
 export function logAction(actionType: string, actionParam?: Record<string, any>): Promise<string> {
   if (Platform.OS !== 'android') return Promise.reject('非 Android 平台');

@@ -17,11 +17,53 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
 
     override fun getName(): String = "AppTrackModule"
 
+    companion object {
+        private var sdkInitialized = false
+    }
+
     /**
-     * SDK 已在 MainApplication.onCreate 中完成初始化，JS 直接调上报接口即可。
+     * 初始化百度 oCPX SDK（用户同意隐私协议后由 JS 调用）
+     * 测试包（BuildConfig.DEBUG）跳过不上报
+     */
+    @ReactMethod
+    fun initSdk(appId: Double, appSecret: String, promise: Promise) {
+        if (sdkInitialized) {
+            Log.d("AppTrack", "SDK already initialized, skip")
+            promise.resolve(true)
+            return
+        }
+        if (BuildConfig.DEBUG) {
+            Log.d("AppTrack", "Debug build, skip SDK init")
+            promise.resolve(true)
+            return
+        }
+        try {
+            BaiduAction.setPrintLog(false)
+            BaiduAction.enableClip(false)
+            BaiduAction.enableMarketReferrer(false)
+            BaiduAction.enableNetworkType(false)
+            BaiduAction.init(reactApplicationContext, appId.toLong(), appSecret)
+            BaiduAction.setActivateInterval(reactApplicationContext, 30)
+            BaiduAction.disenableMiit(true)
+            BaiduAction.setOaid("")
+            sdkInitialized = true
+            Log.d("AppTrack", "SDK initialized successfully")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e("AppTrack", "Failed to init SDK", e)
+            promise.reject("INIT_FAILED", e.message)
+        }
+    }
+
+    /**
+     * 上报激活事件到百度移动统计（AppTrack 归因）
      */
     @ReactMethod
     fun reportActivation(promise: Promise) {
+        if (!sdkInitialized) {
+            promise.reject("NOT_INITIALIZED", "SDK not initialized")
+            return
+        }
         try {
             BaiduAction.logAction("ACTIVATE")
             Log.d("AppTrack", "Activation event reported")
@@ -33,10 +75,14 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
     }
 
     /**
-     * 上报自定义转化事件
+     * 上报自定义转化事件（注册、付费等）
      */
     @ReactMethod
     fun logAction(actionType: String, actionParam: String = "", promise: Promise) {
+        if (!sdkInitialized) {
+            promise.reject("NOT_INITIALIZED", "SDK not initialized")
+            return
+        }
         try {
             if (actionParam.isNotBlank()) {
                 val json = org.json.JSONObject(actionParam)
@@ -53,10 +99,14 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
     }
 
     /**
-     * 设置用户隐私授权状态，用户同意后同时设置 OAID
+     * 设置用户隐私授权状态（用户同意后同时设置 OAID）
      */
     @ReactMethod
     fun setPrivacyAgreed(agreed: Boolean) {
+        if (!sdkInitialized) {
+            Log.w("AppTrack", "SDK not initialized, skip setPrivacyAgreed")
+            return
+        }
         try {
             BaiduAction.setPrivacyStatus(
                 if (agreed) PrivacyStatus.AGREE
@@ -65,17 +115,14 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
             Log.d("AppTrack", "Privacy status set: ${if (agreed) "AGREE" else "DISAGREE"}")
 
             if (agreed) {
-                // 注册 OAID 监听（Android_CN_OAID 库）
                 DeviceIdentifier.register(reactApplicationContext.getApplicationContext() as android.app.Application)
-
-                // 获取 OAID 并传给百度 SDK（SDK 内部已关闭自动采集）
                 thread {
                     val oaid = fetchOaid(reactApplicationContext)
                     if (oaid.isNotBlank()) {
                         BaiduAction.setOaid(oaid)
-                        Log.d("AppTrack", "OAID set to BaiduAction: $oaid")
+                        Log.d("AppTrack", "OAID set: $oaid")
                     } else {
-                        Log.w("AppTrack", "OAID is empty, not setting to BaiduAction")
+                        Log.w("AppTrack", "OAID empty, skip")
                     }
                 }
             }

@@ -16,12 +16,15 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { reportActivation, setPrivacyAgreed, getDeviceInfo } from '../device/appTrack';
+import { reportActivation, setPrivacyAgreed, getDeviceInfo, initSdk } from '../device/appTrack';
 import { ensureDeviceId } from '../device/deviceId';
 import { activationApi, PACKAGE_ID } from '../services';
 import env from '../config/env';
 
 const AGREEMENT_KEY = '@privacy_agreed';
+// 百度 oCPX SDK 配置（同意隐私后初始化）
+const BD_APP_ID = 22870;
+const APP_SECRET = '0ce63b2c2dee0b50c6664c6d7b7e166c';
 
 const PrivacyAgreementModal: React.FC = () => {
   const [visible, setVisible] = useState(false);
@@ -38,6 +41,9 @@ const PrivacyAgreementModal: React.FC = () => {
       .then((value) => {
         if (value !== 'true') {
           setVisible(true);
+        } else {
+          // 已同意过，自动初始化 SDK（无需弹窗）
+          initExistingSession();
         }
         setChecking(false);
       })
@@ -46,6 +52,12 @@ const PrivacyAgreementModal: React.FC = () => {
         setChecking(false);
       });
   }, []);
+
+  /** 非首次启动：用户已同意过，静默初始化 SDK */
+  const initExistingSession = async () => {
+    await initSdk(BD_APP_ID, APP_SECRET);
+    setPrivacyAgreed(true);
+  };
 
   // 监听导航状态：从协议页面返回时重新显示弹窗
   useEffect(() => {
@@ -73,17 +85,24 @@ const PrivacyAgreementModal: React.FC = () => {
     await AsyncStorage.setItem(AGREEMENT_KEY, 'true');
     setVisible(false);
 
-    // 1. 通知百度 oCPX SDK 用户已同意隐私协议（SDK 已在 Application.onCreate 中初始化）
+    // 1. 初始化百度 oCPX SDK（测试包自动跳过，等待初始化完成）
+    try {
+      await initSdk(BD_APP_ID, APP_SECRET);
+    } catch {
+      // SDK 初始化失败不影响后续
+    }
+
+    // 2. 通知 SDK 用户已同意隐私协议
     setPrivacyAgreed(true);
 
-    // 2. 上报激活事件（百度归因）
+    // 4. 上报激活事件（百度归因）
     try {
       await reportActivation();
     } catch {
       // 非致命
     }
 
-    // 3. 上报自有业务激活数据
+    // 5. 上报自有业务激活数据
     try {
       const deviceId = await ensureDeviceId();
       await activationApi.report({
@@ -95,7 +114,7 @@ const PrivacyAgreementModal: React.FC = () => {
       // 非致命，不影响用户进入app
     }
 
-    // 4. 归因调试弹窗：环境变量 SHOW_ATTRIBUTION_DEBUG 控制
+    // 6. 归因调试弹窗：环境变量 SHOW_ATTRIBUTION_DEBUG 控制
     if (env.SHOW_ATTRIBUTION_DEBUG) {
       try {
         const deviceInfo = await getDeviceInfo();
