@@ -2,7 +2,6 @@
 -dontusemixedcaseclassnames
 -dontskipnonpubliclibraryclasses
 -dontpreverify
--dontoptimize
 -renamesourcefileattribute SourceFile
 -keepattributes InnerClasses
 

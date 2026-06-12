@@ -16,12 +16,14 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NativeModules } from 'react-native';
 import { reportActivation, setPrivacyAgreed, getDeviceInfo, initSdk } from '../device/appTrack';
 import { ensureDeviceId } from '../device/deviceId';
 import { activationApi, PACKAGE_ID } from '../services';
 import env from '../config/env';
 
 const AGREEMENT_KEY = '@privacy_agreed';
+const SDK_INIT_KEY = '@sdk_initialized';
 // 百度 oCPX SDK 配置（同意隐私后初始化）
 const BD_APP_ID = 22870;
 const APP_SECRET = '0ce63b2c2dee0b50c6664c6d7b7e166c';
@@ -37,20 +39,46 @@ const PrivacyAgreementModal: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
 
   useEffect(() => {
-    AsyncStorage.getItem(AGREEMENT_KEY)
-      .then((value) => {
-        if (value !== 'true') {
-          setVisible(true);
-        } else {
-          // 已同意过，自动初始化 SDK（无需弹窗）
-          initExistingSession();
+    const checkPrivacy = async () => {
+      // 1. 先检查原生层（SplashActivity 写入的 SharedPreferences）
+      let nativeAgreed = false;
+      if (NativeModules.PrivacyModule) {
+        try {
+          nativeAgreed = await NativeModules.PrivacyModule.hasUserAgreed();
+        } catch {
+          // 原生模块异常，降级到 AsyncStorage
         }
+      }
+
+      if (nativeAgreed) {
+        // 原生层已弹出过隐私弹窗且用户同意了
+        // JS 侧不需要再次弹窗，但必须静默初始化 SDK
+        await initExistingSession();
         setChecking(false);
-      })
-      .catch(() => {
-        setVisible(true);
+        return;
+      }
+
+      // 2. 降级：检查旧的 JS 层 AsyncStorage（版本升级兼容）
+      let legacyAgreed = false;
+      try {
+        legacyAgreed = (await AsyncStorage.getItem(AGREEMENT_KEY)) === 'true';
+      } catch {
+        // AsyncStorage 异常
+      }
+
+      if (legacyAgreed) {
+        // 旧版本已同意过，静默初始化 SDK（不弹窗）
+        await initExistingSession();
         setChecking(false);
-      });
+        return;
+      }
+
+      // 3. 从未同意过，显示弹窗
+      setVisible(true);
+      setChecking(false);
+    };
+
+    checkPrivacy();
   }, []);
 
   /** 非首次启动：用户已同意过，静默初始化 SDK */
