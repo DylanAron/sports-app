@@ -11,6 +11,8 @@ interface Props {
 const DEFAULT_LEAGUE = require('../../assets/ai/default_league.webp');
 const DEFAULT_HOME = require('../../assets/ai/default_home_logo.webp');
 const DEFAULT_AWAY = require('../../assets/ai/default_away_logo.webp');
+const HIT_IMG = require('../../assets/ishit.webp');
+const UNHIT_IMG = require('../../assets/unhit.webp');
 
 const LogoSafe = ({ uri, defaultImg, size }: { uri: string | null; defaultImg: any; size: number }) => {
   const [failed, setFailed] = React.useState(false);
@@ -46,6 +48,13 @@ const CornerListScreen: React.FC<Props> = ({ onBack, onDetail }) => {
 
   const renderItem = ({ item }: { item: CornerItem }) => (
     <TouchableOpacity style={styles.card} activeOpacity={0.7} onPress={() => onDetail(item.id)}>
+      {/* 命中/未中角标 */}
+      {item.isHit !== -1 && (
+        <Image
+          source={item.isHit === 1 ? HIT_IMG : UNHIT_IMG}
+          style={styles.hitCorner}
+        />
+      )}
       {/* 联赛名称 */}
       <View style={styles.leagueRow}>
         <LogoSafe uri={item.leagueLogo} defaultImg={DEFAULT_LEAGUE} size={52} />
@@ -59,12 +68,8 @@ const CornerListScreen: React.FC<Props> = ({ onBack, onDetail }) => {
           <Text style={styles.teamName} numberOfLines={1}>{item.homeName}</Text>
         </View>
         <View style={styles.vsCol}>
+          {item.result != null && item.result !== '' ? <Text style={styles.scoreLabel}>{item.result}</Text> : null}
           <Text style={styles.vsText}>VS</Text>
-          {item.isHit !== -1 && (
-            <Text style={[styles.hitBadge, item.isHit === 1 ? styles.hitYes : styles.hitNo]}>
-              {item.isHit === 1 ? '✓ 命中' : '✗ 未中'}
-            </Text>
-          )}
         </View>
         <View style={styles.teamSide}>
           <LogoSafe uri={item.awayLogo} defaultImg={DEFAULT_AWAY} size={52} />
@@ -140,10 +145,9 @@ const styles = StyleSheet.create({
   teamSide: { flex: 1, alignItems: 'center' },
   teamName: { fontSize: 13, fontWeight: '600', color: '#1e293b', marginTop: 6 },
   vsCol: { alignItems: 'center', paddingHorizontal: 16 },
-  vsText: { fontSize: 14, color: '#94a3b8', fontWeight: '800', marginBottom: 4 },
-  hitBadge: { fontSize: 10, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
-  hitYes: { backgroundColor: '#dcfce7', color: '#16a34a' },
-  hitNo: { backgroundColor: '#fee2e2', color: '#dc2626' },
+  vsText: { fontSize: 14, color: '#94a3b8', fontWeight: '800' },
+  scoreLabel: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 4 },
+  hitCorner: { position: 'absolute', top: 8, right: 8, width: 65, height: 65 },
   recommendRow: {
     flexDirection: 'row', alignItems: 'center', marginTop: 12,
     backgroundColor: '#f8fafc', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 10,

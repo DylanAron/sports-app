@@ -14,6 +14,8 @@ interface Props {
 const DEFAULT_LEAGUE = require('../../assets/ai/default_league.webp');
 const DEFAULT_HOME = require('../../assets/ai/default_home_logo.webp');
 const DEFAULT_AWAY = require('../../assets/ai/default_away_logo.webp');
+const HIT_IMG = require('../../assets/ishit.webp');
+const UNHIT_IMG = require('../../assets/unhit.webp');
 
 const LogoSafe = ({ uri, defaultImg, size }: { uri: string | null; defaultImg: any; size: number }) => {
   const [failed, setFailed] = React.useState(false);
@@ -79,11 +81,13 @@ const CornerDetailScreen: React.FC<Props> = ({ id, onBack }) => {
               <Text style={styles.topTeamName}>{data.homeName}</Text>
             </View>
             <View style={styles.topVsBox}>
+              {(data as any).result ? <Text style={styles.topScoreText}>{(data as any).result}</Text> : null}
               <Text style={styles.topVsText}>VS</Text>
               {data.isHit !== -1 && (
-                <Text style={[styles.topHitBadge, data.isHit === 1 ? styles.topHitYes : styles.topHitNo]}>
-                  {data.isHit === 1 ? '✓ 命中' : '✗ 未中'}
-                </Text>
+                <Image
+                  source={data.isHit === 1 ? HIT_IMG : UNHIT_IMG}
+                  style={styles.topHitCorner}
+                />
               )}
             </View>
             <View style={styles.topTeamBox}>
@@ -175,9 +179,8 @@ const styles = StyleSheet.create({
   topTeamName: { fontSize: 16, fontWeight: '700', color: '#ffffff', marginTop: 8 },
   topVsBox: { alignItems: 'center', paddingHorizontal: 24 },
   topVsText: { fontSize: 20, fontWeight: '800', color: 'rgba(255,255,255,0.6)' },
-  topHitBadge: { fontSize: 11, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8, overflow: 'hidden', marginTop: 8 },
-  topHitYes: { backgroundColor: '#16a34a', color: '#ffffff' },
-  topHitNo: { backgroundColor: '#dc2626', color: '#ffffff' },
+  topScoreText: { fontSize: 22, fontWeight: '900', color: '#ffffff', marginBottom: 4 },
+  topHitCorner: { width: 65, height: 65, marginTop: 8 },
 
   predictionDesc: {
     backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12,

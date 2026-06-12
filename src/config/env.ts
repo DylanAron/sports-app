@@ -17,9 +17,9 @@ interface EnvConfig {
 }
 
 const DEV: EnvConfig = {
-  API_BASE_URL: 'http://192.168.4.108:8086',
-  CS_API_BASE_URL: 'http://192.168.4.108:8089',
-  WS_BASE_URL: 'ws://192.168.4.108:9090/ws',
+  API_BASE_URL: 'http://192.168.2.82:8086',
+  CS_API_BASE_URL: 'http://192.168.2.82:8089',
+  WS_BASE_URL: 'ws://192.168.2.82:9090/ws',
   ENV: 'development',
   SHOW_ATTRIBUTION_DEBUG: true,
 };

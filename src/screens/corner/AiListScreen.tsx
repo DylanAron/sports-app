@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, StatusBar, Image } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, StatusBar, Image, RefreshControl } from 'react-native';
 import { cornerApi, goalApi, scoreApi, halfFullApi, winLoseApi } from '../../services';
 import type { CornerItem } from '../../services/cornerService';
 
 const DEFAULT_LEAGUE = require('../../assets/ai/default_league_logo.webp');
 const DEFAULT_HOME = require('../../assets/ai/default_home_logo.webp');
 const DEFAULT_AWAY = require('../../assets/ai/default_away_logo.webp');
+const HIT_IMG = require('../../assets/ishit.webp');
+const UNHIT_IMG = require('../../assets/unhit.webp');
 
 type ApiModule = 'corner' | 'goal' | 'half_full' | 'score' | 'win_lose';
 
@@ -44,32 +46,82 @@ const AiListScreen: React.FC<Props> = ({ module, onBack }) => {
   const [todayData, setTodayData] = useState<CornerItem[]>([]);
   const [historyData, setHistoryData] = useState<CornerItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [activeTab, setActiveTab] = useState<'today' | 'history'>('today');
 
-  const loadData = async () => {
+  const pages = useRef({ today: 1, history: 1 }).current;
+  const hasMore = useRef({ today: true, history: true }).current;
+  const PAGE_SIZE = 20;
+
+  const loadData = async (isRefresh = false, tab = activeTab) => {
     try {
       const apiFn = APIS[module];
-      const [todayRes, historyRes] = await Promise.all([
-        apiFn.list({ page: 1, pageSize: 50, isTodayData: 1 }),
-        apiFn.list({ page: 1, pageSize: 50, isTodayData: 0 }),
-      ]);
-      setTodayData(todayRes.list || []);
-      setHistoryData(historyRes.list || []);
+      if (!isRefresh && !hasMore[tab]) return;
+
+      const page = isRefresh ? 1 : pages[tab];
+      const res = await apiFn.list({ page, pageSize: PAGE_SIZE, isTodayData: tab === 'today' ? 1 : 0 });
+
+      if (isRefresh) {
+        if (tab === 'today') setTodayData(res.list || []);
+        else setHistoryData(res.list || []);
+        pages[tab] = 2;
+      } else {
+        if (tab === 'today') setTodayData(prev => [...prev, ...(res.list || [])]);
+        else setHistoryData(prev => [...prev, ...(res.list || [])]);
+        pages[tab] = page + 1;
+      }
+      hasMore[tab] = (res.list?.length || 0) >= PAGE_SIZE;
     } catch { } finally {
       setLoading(false);
+      setRefreshing(false);
+      setLoadingMore(false);
     }
   };
 
-  useEffect(() => { loadData(); }, [module]);
+  useEffect(() => {
+    setLoading(true);
+    pages.today = 1; pages.history = 1;
+    hasMore.today = true; hasMore.history = true;
+    setTodayData([]);
+    setHistoryData([]);
+    loadData(false, 'today');
+    loadData(false, 'history');
+  }, [module]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadData(true, activeTab);
+  };
+
+  const handleLoadMore = () => {
+    if (loadingMore || !hasMore[activeTab]) return;
+    setLoadingMore(true);
+    loadData(false, activeTab);
+  };
+
+  const handleTabChange = (tab: 'today' | 'history') => {
+    setActiveTab(tab);
+  };
 
   const renderItem = ({ item }: { item: CornerItem }) => {
     const detail = item as any;
     return (
       <View style={styles.card}>
+        {/* 命中/未中角标 - 历史战绩 */}
+        {activeTab === 'history' && item.isHit !== -1 && (
+          <Image
+            source={item.isHit === 1 ? HIT_IMG : UNHIT_IMG}
+            style={styles.hitCorner}
+          />
+        )}
         <View style={styles.leagueRow}>
-          <LogoSafe uri={item.leagueLogo} defaultImg={DEFAULT_LEAGUE} size={52} />
-          <Text style={styles.leagueName}>{item.leagueName}</Text>
-          <Text style={styles.matchDate}>{item.matchDate?.substring(5, 10) || ''}</Text>
+          <View style={styles.leagueLeft}>
+            <LogoSafe uri={item.leagueLogo} defaultImg={DEFAULT_LEAGUE} size={36} />
+            <Text style={styles.leagueName}>{item.leagueName}</Text>
+          </View>
+          <Text style={styles.matchDateCenter}>{(item.matchDate || '').replace('T', ' ').substring(0, 19)}</Text>
+          <View style={styles.leagueLeft} />
         </View>
 
         <View style={styles.matchRow}>
@@ -78,6 +130,7 @@ const AiListScreen: React.FC<Props> = ({ module, onBack }) => {
             <Text style={styles.teamName} numberOfLines={1}>{item.homeName}</Text>
           </View>
           <View style={styles.vsCol}>
+            {detail.result != null && detail.result !== '' ? <Text style={styles.scoreLabel}>{detail.result}</Text> : null}
             <Text style={styles.vsText}>VS</Text>
           </View>
           <View style={styles.teamSide}>
@@ -90,15 +143,6 @@ const AiListScreen: React.FC<Props> = ({ module, onBack }) => {
         {module === 'half_full' && detail.halfScore && (
           <View style={styles.scoreRow}>
             <Text style={styles.scoreText}>半场 {detail.halfScore}  全场 {detail.fullScore}</Text>
-          </View>
-        )}
-
-        {/* 命中/未中标记 - 历史战绩 */}
-        {activeTab === 'history' && item.isHit !== -1 && (
-          <View style={styles.hitRow}>
-            <Text style={[styles.hitBadge, item.isHit === 1 ? styles.hitYes : styles.hitNo]}>
-              {item.isHit === 1 ? '✓ 命中' : '✗ 未中'}
-            </Text>
           </View>
         )}
 
@@ -128,7 +172,7 @@ const AiListScreen: React.FC<Props> = ({ module, onBack }) => {
       <View style={styles.tabBar}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'today' && styles.tabActive]}
-          onPress={() => setActiveTab('today')}>
+          onPress={() => handleTabChange('today')}>
           <Text style={[styles.tabText, activeTab === 'today' && styles.tabTextActive]}>
             今日赛事预测
           </Text>
@@ -140,7 +184,7 @@ const AiListScreen: React.FC<Props> = ({ module, onBack }) => {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'history' && styles.tabActive]}
-          onPress={() => setActiveTab('history')}>
+          onPress={() => handleTabChange('history')}>
           <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>
             历史战绩
           </Text>
@@ -162,7 +206,22 @@ const AiListScreen: React.FC<Props> = ({ module, onBack }) => {
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.3}
           ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyText}>暂无数据</Text></View>}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.footer}>
+                <ActivityIndicator size="small" color="#2563eb" />
+                <Text style={styles.footerText}>加载更多...</Text>
+              </View>
+            ) : !hasMore[activeTab] && currentData.length > 0 ? (
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>已加载全部</Text>
+              </View>
+            ) : null
+          }
         />
       )}
     </View>
@@ -176,7 +235,7 @@ const styles = StyleSheet.create({
   backArrow: { fontSize: 32, color: '#1e293b', lineHeight: 34 },
   headerTitle: { fontSize: 17, fontWeight: '700', color: '#1e293b' },
   // Tab
-  tabBar: { flexDirection: 'row', backgroundColor: '#ffffff', paddingHorizontal: 16, paddingBottom: 12 },
+  tabBar: { flexDirection: 'row', backgroundColor: '#ffffff', paddingHorizontal: 16, paddingVertical: 12 },
   tab: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#f5f7fa', marginRight: 10 },
   tabActive: { backgroundColor: '#2563eb' },
   tabText: { fontSize: 13, fontWeight: '600', color: '#64748b' },
@@ -188,25 +247,26 @@ const styles = StyleSheet.create({
   // List
   list: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 20 },
   card: { backgroundColor: '#ffffff', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  leagueRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  leagueName: { fontSize: 12, color: '#64748b', marginLeft: 6, fontWeight: '500', flex: 1 },
-  matchDate: { fontSize: 11, color: '#94a3b8' },
+  leagueRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  leagueLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  leagueName: { fontSize: 12, color: '#64748b', marginLeft: 6, fontWeight: '500' },
+  matchDateCenter: { fontSize: 11, color: '#94a3b8', textAlign: 'center' },
   matchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   teamSide: { flex: 1, alignItems: 'center' },
   teamName: { fontSize: 13, fontWeight: '600', color: '#1e293b' },
   vsCol: { alignItems: 'center', paddingHorizontal: 16 },
   vsText: { fontSize: 14, color: '#94a3b8', fontWeight: '800' },
+  scoreLabel: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 4 },
+  hitCorner: { position: 'absolute', top: 8, right: 8, width: 65, height: 65 },
   scoreRow: { alignItems: 'center', marginTop: 8, paddingVertical: 4, backgroundColor: '#f8fafc', borderRadius: 6 },
   scoreText: { fontSize: 12, color: '#2563eb', fontWeight: '600' },
-  hitRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 8 },
-  hitBadge: { fontSize: 11, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 8, overflow: 'hidden' },
-  hitYes: { backgroundColor: '#dcfce7', color: '#16a34a' },
-  hitNo: { backgroundColor: '#fee2e2', color: '#dc2626' },
-  recommendRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, backgroundColor: '#f8fafc', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 10 },
+  recommendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 10, backgroundColor: '#f8fafc', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 10 },
   recommendIcon: { fontSize: 12, marginRight: 6 },
-  recommendText: { fontSize: 12, color: '#2563eb', fontWeight: '500', flex: 1 },
+  recommendText: { fontSize: 12, color: '#2563eb', fontWeight: '500', textAlign: 'center' },
   empty: { paddingVertical: 60, alignItems: 'center' },
   emptyText: { fontSize: 14, color: '#94a3b8' },
+  footer: { paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  footerText: { fontSize: 12, color: '#94a3b8', marginLeft: 6 },
 });
 
 export default AiListScreen;

@@ -9,6 +9,7 @@ export interface CornerItem {
   awayLogo: string | null;
   awayName: string;
   recommendContent: string | null;
+  result: string | null;
   isTodayData: number;
   isHit: number;
   matchDate: string;
