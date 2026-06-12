@@ -188,7 +188,7 @@ const ProfileScreen: React.FC = () => {
         <TouchableOpacity onPress={async () => {
           try {
             const msg = await logAction('PURCHASE', { purchase_money: 0.01 });
-            Alert.alert('已记录', '充值事件已提交到百度归因队列，SDK 将异步上报。\n\n如果长时间未收到，请在百度归因后台检查：\n1. 事件类型 PURCHASE 是否已配置\n2. 应用是否在 release 模式下运行\n3. 隐私协议是否已同意', [{ text: '知道了' }]);
+           // Alert.alert('已记录', '充值事件已提交到百度归因队列，SDK 将异步上报。\n\n如果长时间未收到，请在百度归因后台检查：\n1. 事件类型 PURCHASE 是否已配置\n2. 应用是否在 release 模式下运行\n3. 隐私协议是否已同意', [{ text: '知道了' }]);
           } catch (e: any) {
             Alert.alert('上报失败', e?.message || e || '未知错误');
           }

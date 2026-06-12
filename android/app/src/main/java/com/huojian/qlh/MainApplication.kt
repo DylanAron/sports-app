@@ -11,12 +11,6 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 
 class MainApplication : Application(), ReactApplication {
 
-  companion object {
-    // 百度归因 SDK 应用 ID 和密钥（从百度后台获取）
-    private const val BD_APP_ID = 22870L
-    private const val APP_SECRET = "0ce63b2c2dee0b50c6664c6d7b7e166c"
-  }
-
   override val reactHost: ReactHost by lazy {
     getDefaultReactHost(
       context = applicationContext,
@@ -33,22 +27,21 @@ class MainApplication : Application(), ReactApplication {
     super.onCreate()
     loadReactNative(this)
 
-    if (BuildConfig.DEBUG) {
-      Log.d("MainApplication", "Debug build, skip Baidu oCPX SDK initialization")
-      return
+    // 百度 oCPX SDK 在 Application.onCreate 中完成初始化
+    // 与官方 BaiduMobadsActionDemo 一致，密钥写死在客户端
+    // debug/release 均初始化，测试环境自行判断
+    try {
+      BaiduAction.setPrintLog(false)
+      BaiduAction.enableClip(false)
+      BaiduAction.enableMarketReferrer(false)
+      BaiduAction.enableNetworkType(false)
+      BaiduAction.init(this, 22870L, "0ce63b2c2dee0b50c6664c6d7b7e166c")
+      BaiduAction.setActivateInterval(this, 30)
+      BaiduAction.disenableMiit(true)
+      BaiduAction.setOaid("")
+      Log.d("MainApplication", "Baidu oCPX SDK initialized")
+    } catch (e: Exception) {
+      Log.e("MainApplication", "Failed to init Baidu oCPX SDK", e)
     }
-
-    // 百度 oCPX SDK 必须在 Application.onCreate 中初始化（文档要求）
-    // 严格按照官方 demo 的初始化顺序：配置 → init → 激活间隔 → 关闭 OAID 自动采集 → 设置空 OAID
-    BaiduAction.setPrintLog(false)
-    BaiduAction.enableClip(false)
-    BaiduAction.enableMarketReferrer(false)
-    BaiduAction.enableNetworkType(false)
-    BaiduAction.init(this, BD_APP_ID, APP_SECRET)
-    BaiduAction.setActivateInterval(this, 30)
-
-    // 关闭 SDK 内部 OAID 自动采集，由 AppTrackModule 在隐私同意后手动设置
-    BaiduAction.disenableMiit(true)
-    BaiduAction.setOaid("")
   }
 }

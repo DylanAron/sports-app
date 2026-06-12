@@ -3,8 +3,8 @@ import { NativeModules, Platform } from 'react-native';
 const { AppTrackModule } = NativeModules;
 
 /**
- * SDK 初始化已在 MainApplication.onCreate 中完成（release 构建）。
- * 以下接口只需在用户同意隐私协议后调用即可。
+ * SDK 已在 MainApplication.onCreate 中完成初始化（密钥写死客户端）。
+ * 以下接口直接调上报即可。
  */
 
 /**

@@ -18,21 +18,10 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
     override fun getName(): String = "AppTrackModule"
 
     /**
-     * SDK 已在 MainApplication.onCreate 中初始化（release 构建）。
-     * debug 构建跳过初始化以防止测试数据上报，此时所有上报接口均不可用。
-     */
-    private val sdkReady: Boolean
-        get() = !BuildConfig.DEBUG
-
-    /**
-     * 上报激活转化事件
+     * SDK 已在 MainApplication.onCreate 中完成初始化，JS 直接调上报接口即可。
      */
     @ReactMethod
     fun reportActivation(promise: Promise) {
-        if (!sdkReady) {
-            promise.reject("SDK_NOT_INIT", "Debug 构建跳过百度归因")
-            return
-        }
         try {
             BaiduAction.logAction("ACTIVATE")
             Log.d("AppTrack", "Activation event reported")
@@ -48,10 +37,6 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
      */
     @ReactMethod
     fun logAction(actionType: String, actionParam: String = "", promise: Promise) {
-        if (!sdkReady) {
-            promise.reject("SDK_NOT_INIT", "百度归因SDK未初始化（debug 构建跳过）")
-            return
-        }
         try {
             if (actionParam.isNotBlank()) {
                 val json = org.json.JSONObject(actionParam)

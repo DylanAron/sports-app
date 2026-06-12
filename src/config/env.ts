@@ -12,6 +12,8 @@ interface EnvConfig {
   /** 客服系统 WebSocket 地址 */
   WS_BASE_URL: string;
   ENV: Environment;
+  /** 百度归因调试弹窗（OAID/ANDROID_ID 等信息），测试时开启 */
+  SHOW_ATTRIBUTION_DEBUG: boolean;
 }
 
 const DEV: EnvConfig = {
@@ -19,6 +21,7 @@ const DEV: EnvConfig = {
   CS_API_BASE_URL: 'http://192.168.2.82:8089',
   WS_BASE_URL: 'ws://192.168.2.82:9090/ws',
   ENV: 'development',
+  SHOW_ATTRIBUTION_DEBUG: true,
 };
 
 const PROD: EnvConfig = {
@@ -26,6 +29,7 @@ const PROD: EnvConfig = {
   CS_API_BASE_URL: 'https://cs.6hlot.com',
   WS_BASE_URL: 'wss://cs.6hlot.com/ws',
   ENV: 'production',
+  SHOW_ATTRIBUTION_DEBUG: false,
 };
 
 // 切换环境：development 使用 DEV，release/production 使用 PROD
