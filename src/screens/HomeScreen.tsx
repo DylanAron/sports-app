@@ -1,13 +1,19 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, StatusBar, FlatList } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, StatusBar, FlatList, Modal, ScrollView } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { WebView } from 'react-native-webview';
 import { colors, fonts } from '../theme';
+import { bannerApi } from '../services';
+import type { BannerItem } from '../services/bannerService';
+import env from '../config/env';
 import CornerListScreen from './corner/CornerListScreen';
 import CornerDetailScreen from './corner/CornerDetailScreen';
 import AiListScreen from './corner/AiListScreen';
 import IntelligenceScreen from './corner/IntelligenceScreen';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BANNER_WIDTH = SCREEN_WIDTH - 40;
+const AUTO_PLAY_INTERVAL = 3000;
 
 type ApiModule = 'corner' | 'goal' | 'half_full' | 'score' | 'win_lose';
 
@@ -19,15 +25,6 @@ const AI_ITEMS = [
   { key: 'score', name: 'AI 比分', img: require('../assets/ai/ai_score.webp') },
   { key: 'win_lose', name: 'AI 胜负', img: require('../assets/ai/ai_win_lose.webp') },
 ];
-
-const BANNER_IMAGES = [
-  require('../assets/carousel1.webp'),
-  require('../assets/carousel2.webp'),
-  require('../assets/carousel3.webp'),
-  require('../assets/carousel4.webp'),
-];
-const BANNER_WIDTH = SCREEN_WIDTH - 40;
-const AUTO_PLAY_INTERVAL = 3000;
 
 const CARD_W = (SCREEN_WIDTH - 74) / 2;
 
@@ -50,19 +47,31 @@ const ringSteps = [
 
 const HomeScreen: React.FC = () => {
   const [page, setPage] = useState<PageState>({ type: 'home' });
+  const [banners, setBanners] = useState<BannerItem[]>([]);
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [bannerModalVisible, setBannerModalVisible] = useState(false);
+  const [bannerHtmlContent, setBannerHtmlContent] = useState('');
   const bannerRef = useRef<FlatList>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const navigation = useNavigation<any>();
+
+  // 从接口获取轮播图
+  useEffect(() => {
+    bannerApi.getList()
+      .then(setBanners)
+      .catch(() => setBanners([]));
+  }, []);
 
   // 自动轮播
   useEffect(() => {
+    if (banners.length === 0) return;
     timerRef.current = setInterval(() => {
-      const next = (bannerIndex + 1) % BANNER_IMAGES.length;
+      const next = (bannerIndex + 1) % banners.length;
       bannerRef.current?.scrollToIndex({ index: next, animated: true });
       setBannerIndex(next);
     }, AUTO_PLAY_INTERVAL);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [bannerIndex]);
+  }, [bannerIndex, banners.length]);
 
   const onBannerScrollEnd = (e: any) => {
     const x = e.nativeEvent.contentOffset.x;
@@ -109,6 +118,16 @@ const HomeScreen: React.FC = () => {
     );
   }
 
+  const handleBannerPress = (banner: BannerItem) => {
+    if (banner.jumpType === 2) {
+      navigation.navigate('CustomerService');
+    } else {
+      // jumpType === 1 弹窗HTML
+      setBannerHtmlContent(banner.jumpContent || '');
+      setBannerModalVisible(true);
+    }
+  };
+
   const handlePress = (key: string) => {
     if (key === 'qingbao') {
       setPage({ type: 'intelligence' });
@@ -130,25 +149,31 @@ const HomeScreen: React.FC = () => {
 
         {/* 轮播图 */}
         <View style={styles.bannerSection}>
-          <FlatList
-            ref={bannerRef}
-            data={BANNER_IMAGES}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={BANNER_WIDTH}
-            decelerationRate="fast"
-            onMomentumScrollEnd={onBannerScrollEnd}
-            renderItem={({ item }) => (
-              <Image source={item} style={styles.bannerImg} resizeMode="cover" />
-            )}
-            keyExtractor={(_, idx) => String(idx)}
-          />
-          <View style={styles.bannerDots}>
-            {BANNER_IMAGES.map((_, idx) => (
-              <View key={idx} style={[styles.bannerDot, idx === bannerIndex && styles.bannerDotActive]} />
-            ))}
-          </View>
+          {banners.length > 0 && (
+            <>
+              <FlatList
+                ref={bannerRef}
+                data={banners}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                snapToInterval={BANNER_WIDTH}
+                decelerationRate="fast"
+                onMomentumScrollEnd={onBannerScrollEnd}
+                renderItem={({ item }) => (
+                  <TouchableOpacity activeOpacity={0.9} onPress={() => handleBannerPress(item)}>
+                    <Image source={{ uri: env.API_BASE_URL + item.imageUrl }} style={styles.bannerImg} resizeMode="cover" />
+                  </TouchableOpacity>
+                )}
+                keyExtractor={(item) => String(item.id)}
+              />
+              <View style={styles.bannerDots}>
+                {banners.map((_, idx) => (
+                  <View key={idx} style={[styles.bannerDot, idx === bannerIndex && styles.bannerDotActive]} />
+                ))}
+              </View>
+            </>
+          )}
         </View>
 
         <View style={styles.gridContainer}>
@@ -162,6 +187,27 @@ const HomeScreen: React.FC = () => {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* HTML弹窗 */}
+        <Modal visible={bannerModalVisible} transparent animationType="fade" statusBarTranslucent>
+          <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.6)" />
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setBannerModalVisible(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+              <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+                <WebView
+                  originWhitelist={['*']}
+                  source={{ html: bannerHtmlContent }}
+                  style={styles.modalWebView}
+                  scrollEnabled={false}
+                  onMessage={() => {}}
+                />
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
     </View>
   );
 };
@@ -177,6 +223,12 @@ const styles = StyleSheet.create({
   bannerDots: { flexDirection: 'row', justifyContent: 'center', marginTop: 6, gap: 6 },
   bannerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#d0d8e0' },
   bannerDotActive: { width: 20, height: 6, borderRadius: 3, backgroundColor: '#2563eb' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  modalContent: { width: '100%', maxHeight: '80%', backgroundColor: '#fff', borderRadius: 16, paddingTop: 28, paddingHorizontal: 20, paddingBottom: 20, position: 'relative' },
+  modalCloseBtn: { position: 'absolute', top: 10, right: 14, zIndex: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' },
+  modalCloseText: { fontSize: 16, color: '#666', fontWeight: '700' },
+  modalScroll: { maxHeight: 500 },
+  modalWebView: { height: 400, backgroundColor: 'transparent' },
   gridContainer: {
     paddingHorizontal: 20, paddingBottom: 100, paddingTop: 10,
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14, minHeight: 400,
