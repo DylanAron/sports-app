@@ -123,7 +123,15 @@ const HomeScreen: React.FC = () => {
       navigation.navigate('CustomerService');
     } else {
       // jumpType === 1 弹窗HTML
-      setBannerHtmlContent(banner.jumpContent || '');
+      // 修复 HTML 中的图片地址：将 localhost 或相对路径统一替换为真实 API 地址
+      let html = banner.jumpContent || '';
+      const baseUrl = env.API_BASE_URL;
+      // 替换 localhost 开头的图片地址
+      html = html.replace(/src=["']https?:\/\/localhost[^"']*?\/(profile\/[^"']*)["']/gi, (m, p1) => `src="${baseUrl}/${p1}"`);
+      html = html.replace(/src=["']https?:\/\/127\.0\.0\.1[^"']*?\/(profile\/[^"']*)["']/gi, (m, p1) => `src="${baseUrl}/${p1}"`);
+      // 替换相对路径开头（/profile/...），确保 baseUrl 生效
+      html = html.replace(/src=["']\/(profile\/[^"']*)["']/gi, (m, p1) => `src="${baseUrl}/${p1}"`);
+      setBannerHtmlContent(html);
       setBannerModalVisible(true);
     }
   };
@@ -191,20 +199,20 @@ const HomeScreen: React.FC = () => {
         {/* HTML弹窗 */}
         <Modal visible={bannerModalVisible} transparent animationType="fade" statusBarTranslucent>
           <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.6)" />
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
+            <View style={{ width: '100%', height: '60%', backgroundColor: '#fff', borderRadius: 16, paddingTop: 28, paddingHorizontal: 20, paddingBottom: 20, position: 'relative' }}>
               <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setBannerModalVisible(false)}>
                 <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
-              <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-                <WebView
-                  originWhitelist={['*']}
-                  source={{ html: bannerHtmlContent }}
-                  style={styles.modalWebView}
-                  scrollEnabled={false}
-                  onMessage={() => {}}
-                />
-              </ScrollView>
+              <WebView
+                originWhitelist={['*']}
+                source={{ html: bannerHtmlContent, baseUrl: env.API_BASE_URL }}
+                style={{ flex: 1, backgroundColor: 'transparent' }}
+                javaScriptEnabled={false}
+                domStorageEnabled={true}
+                showsVerticalScrollIndicator={false}
+                onMessage={() => {}}
+              />
             </View>
           </View>
         </Modal>
@@ -223,12 +231,8 @@ const styles = StyleSheet.create({
   bannerDots: { flexDirection: 'row', justifyContent: 'center', marginTop: 6, gap: 6 },
   bannerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#d0d8e0' },
   bannerDotActive: { width: 20, height: 6, borderRadius: 3, backgroundColor: '#2563eb' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
-  modalContent: { width: '100%', maxHeight: '80%', backgroundColor: '#fff', borderRadius: 16, paddingTop: 28, paddingHorizontal: 20, paddingBottom: 20, position: 'relative' },
   modalCloseBtn: { position: 'absolute', top: 10, right: 14, zIndex: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' },
   modalCloseText: { fontSize: 16, color: '#666', fontWeight: '700' },
-  modalScroll: { maxHeight: 500 },
-  modalWebView: { height: 400, backgroundColor: 'transparent' },
   gridContainer: {
     paddingHorizontal: 20, paddingBottom: 100, paddingTop: 10,
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14, minHeight: 400,

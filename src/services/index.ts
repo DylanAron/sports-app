@@ -5,4 +5,5 @@ export { goalApi, halfFullApi, scoreApi, winLoseApi, intelligenceApi } from './o
 export { analysisApi } from './analysisService';
 export { activationApi, PACKAGE_ID } from './activationService';
 export { bannerApi } from './bannerService';
+export { tabGuideApi, hasShownGuide, markGuideShown } from './tabGuideService';
 export { setToken, getToken } from '../utils/request';

@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { View, Text, StyleSheet } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { colors, fonts } from '../theme';
+import { tabGuideApi } from '../services';
+import TabGuideModal from '../components/TabGuideModal';
 import HomeScreen from '../screens/HomeScreen';
 import AnalysisScreen from '../screens/AnalysisScreen';
 import ScoreScreen from '../screens/ScoreScreen';
@@ -51,7 +54,39 @@ const tabStyles = StyleSheet.create({
 });
 
 function TabNavigator() {
-  return (
+  const navigation = useNavigation<any>();
+  const [guideModalVisible, setGuideModalVisible] = useState(false);
+  const [guideImageUrl, setGuideImageUrl] = useState('');
+  const [tabGuideMap, setTabGuideMap] = useState<Record<string, { imageUrl: string; isGlobalEnabled: number }>>({});
+  const shownTabsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    tabGuideApi.getList().then(list => {
+      const map: Record<string, { imageUrl: string; isGlobalEnabled: number }> = {};
+      list.forEach((item: any) => {
+        map[item.tabKey] = { imageUrl: item.imageUrl, isGlobalEnabled: Number(item.isGlobalEnabled) };
+      });
+      setTabGuideMap(map);
+      console.log('tab guide loaded:', list);
+      // 首页首次加载检查
+      const homeGuide = map['home'];
+      if (homeGuide && homeGuide.isGlobalEnabled === 1 && !shownTabsRef.current.has('home')) {
+        shownTabsRef.current.add('home');
+        setGuideImageUrl(homeGuide.imageUrl);
+        setGuideModalVisible(true);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const checkTabGuide = (tabKey: string) => {
+    const guide = tabGuideMap[tabKey];
+    if (!guide || guide.isGlobalEnabled !== 1) return;
+    if (shownTabsRef.current.has(tabKey)) return;
+    shownTabsRef.current.add(tabKey);
+    setGuideImageUrl(guide.imageUrl);
+    setGuideModalVisible(true);
+  };
+  return (<View style={{ flex: 1 }}>
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
@@ -73,7 +108,14 @@ function TabNavigator() {
           letterSpacing: 1,
           textDecorationLine: 'none',
         },
-      }}>
+      }}
+      screenListeners={({ route }: any) => ({
+        focus: () => {
+          const tabMap: Record<string, string> = { Home: 'home', Analysis: 'analysis', Score: 'score' };
+          const tabKey = tabMap[route.name];
+          if (tabKey) checkTabGuide(tabKey);
+        },
+      })}>
       <Tab.Screen
         name="Home"
         component={HomeScreen}
@@ -115,7 +157,8 @@ function TabNavigator() {
         }}
       />
     </Tab.Navigator>
-  );
+      <TabGuideModal visible={guideModalVisible} imageUrl={guideImageUrl} onClose={() => setGuideModalVisible(false)} onContact={() => navigation.navigate('CustomerService')} />
+    </View>);
 }
 
 const Navigation: React.FC = () => {
