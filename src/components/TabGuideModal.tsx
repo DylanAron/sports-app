@@ -36,7 +36,7 @@ const TabGuideModal: React.FC<Props> = ({ visible, imageUrl, onClose, onContact 
       <View style={styles.overlay}>
         <View style={styles.content}>
           <View style={styles.imageShadow}>
-            <View style={styles.imageWrapper}>
+            <TouchableOpacity style={styles.imageWrapper} activeOpacity={0.9} onPress={handleContact}>
               <Image
                 source={{ uri: env.API_BASE_URL + imageUrl }}
                 style={{ width: imageW, height: imageH }}
@@ -45,7 +45,7 @@ const TabGuideModal: React.FC<Props> = ({ visible, imageUrl, onClose, onContact 
               <TouchableOpacity style={styles.closeIcon} onPress={onClose}>
                 <Text style={styles.closeIconText}>✕</Text>
               </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </View>
           <TouchableOpacity style={styles.contactBtn} onPress={handleContact}>
             <Text style={styles.contactText}>联系客服</Text>

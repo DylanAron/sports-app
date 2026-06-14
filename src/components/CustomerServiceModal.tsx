@@ -450,7 +450,7 @@ const CustomerServiceModal: React.FC<Props> = ({ visible, onClose }) => {
                     <Text style={styles.userMsgText}>{item.content}</Text>
                   </View>
                 )}
-                <View style={[styles.userTail, { borderLeftColor: (item.msgType === 'image' || item.fileUrl) ? '#fff' : '#2563eb' }]} />
+                <View style={[styles.userTail, { borderLeftColor: item.msgType === 'image' ? '#fff' : '#2563eb' }]} />
               </View>
             </View>
             <View style={styles.avatarUserBorder}>

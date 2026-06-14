@@ -145,8 +145,7 @@ const FileMsg = ({ url, name, isUser }: { url: string; name: string; isUser: boo
         <Text
           style={{
             fontSize: 14,
-            color: isUser ? '#fff' : '#222',
-            flex: 1,
+            color: isUser ? '#fff' : '#2563eb',
             textDecorationLine: 'underline',
           }}
           numberOfLines={2}
@@ -445,7 +444,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
                     <Text style={styles.userMsgText}>{item.content}</Text>
                   </View>
                 )}
-                <View style={[styles.userTail, { borderLeftColor: (item.msgType === 'image' || item.fileUrl) ? '#fff' : '#2563eb' }]} />
+                <View style={[styles.userTail, { borderLeftColor: item.msgType === 'image' ? '#fff' : '#2563eb' }]} />
               </View>
             </View>
             <View style={styles.userAvatarCol}>

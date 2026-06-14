@@ -24,6 +24,8 @@ import env from '../config/env';
 
 const AGREEMENT_KEY = '@privacy_agreed';
 const SDK_INIT_KEY = '@sdk_initialized';
+/** 激活防重标记，上报成功后写入 */
+const ACTIVATION_REPORTED_KEY = '@activation_reported';
 // 百度 oCPX SDK 配置（同意隐私后初始化）
 const BD_APP_ID = 22870;
 const APP_SECRET = '0ce63b2c2dee0b50c6664c6d7b7e166c';
@@ -85,6 +87,52 @@ const PrivacyAgreementModal: React.FC = () => {
   const initExistingSession = async () => {
     await initSdk(BD_APP_ID, APP_SECRET);
     setPrivacyAgreed(true);
+    // 尝试上报激活（防重标记控制，已上报过则跳过）
+    await tryReportActivation();
+  };
+
+  /**
+   * 尝试上报激活事件，防重标记 `@activation_reported` 确保只上报一次。
+   * - 已上报过 → 跳过
+   * - 上报失败 → 不写标记，下次启动自动重试
+   */
+  const tryReportActivation = async () => {
+    try {
+      const alreadyReported = await AsyncStorage.getItem(ACTIVATION_REPORTED_KEY);
+      if (alreadyReported === 'true') {
+        console.log('[Activation] 已上报过，跳过');
+        return;
+      }
+
+      // 1. 百度归因激活上报
+      try {
+        await reportActivation();
+        console.log('[Activation] 百度归因上报成功');
+      } catch (e) {
+        // debug 模式下 SDK 主动跳过初始化，预期会失败，不打印错误
+        if (!__DEV__) {
+          console.error('[Activation] 百度归因上报失败:', e);
+        }
+      }
+
+      // 2. 自有业务激活上报
+      try {
+        const deviceId = await ensureDeviceId();
+        await activationApi.report({
+          deviceId,
+          marketId: 1,
+          packageId: PACKAGE_ID,
+        });
+        console.log('[Activation] 自有业务上报成功');
+
+        // 全部成功后写防重标记
+        await AsyncStorage.setItem(ACTIVATION_REPORTED_KEY, 'true');
+      } catch (e) {
+        console.error('[Activation] 自有业务激活上报失败:', e);
+      }
+    } catch (e) {
+      console.error('[Activation] 激活上报异常:', e);
+    }
   };
 
   // 监听导航状态：从协议页面返回时重新显示弹窗
@@ -123,26 +171,10 @@ const PrivacyAgreementModal: React.FC = () => {
     // 2. 通知 SDK 用户已同意隐私协议
     setPrivacyAgreed(true);
 
-    // 4. 上报激活事件（百度归因）
-    try {
-      await reportActivation();
-    } catch {
-      // 非致命
-    }
+    // 3. 上报激活事件（百度归因 + 自有业务）
+    await tryReportActivation();
 
-    // 5. 上报自有业务激活数据
-    try {
-      const deviceId = await ensureDeviceId();
-      await activationApi.report({
-        deviceId,
-        marketId: 1,
-        packageId: PACKAGE_ID,
-      });
-    } catch {
-      // 非致命，不影响用户进入app
-    }
-
-    // 6. 归因调试弹窗：环境变量 SHOW_ATTRIBUTION_DEBUG 控制
+    // 4. 归因调试弹窗：环境变量 SHOW_ATTRIBUTION_DEBUG 控制
     if (env.SHOW_ATTRIBUTION_DEBUG) {
       try {
         const deviceInfo = await getDeviceInfo();
