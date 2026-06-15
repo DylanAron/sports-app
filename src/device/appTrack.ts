@@ -47,7 +47,14 @@ export function logAction(actionType: string, actionParam?: Record<string, any>)
 /**
  * 获取设备标识信息（调试用）
  */
-export async function getDeviceInfo(): Promise<{androidId: string}> {
+export async function getDeviceInfo(): Promise<{
+  androidId: string;
+  oaid?: string;
+  sdkInt?: string;
+  brand?: string;
+  model?: string;
+  guid?: string;
+}> {
   if (Platform.OS !== 'android') return { androidId: '' };
   if (!AppTrackModule) return { androidId: '' };
   try {

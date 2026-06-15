@@ -10,7 +10,6 @@ import {
   BackHandler,
   TextInput,
   Platform,
-  Alert,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useNavigation } from '@react-navigation/native';
@@ -23,12 +22,13 @@ import { activationApi, PACKAGE_ID } from '../services';
 import env from '../config/env';
 
 const AGREEMENT_KEY = '@privacy_agreed';
-const SDK_INIT_KEY = '@sdk_initialized';
 /** 激活防重标记，上报成功后写入 */
 const ACTIVATION_REPORTED_KEY = '@activation_reported';
 // 百度 oCPX SDK 配置（同意隐私后初始化）
 const BD_APP_ID = 22870;
 const APP_SECRET = '0ce63b2c2dee0b50c6664c6d7b7e166c';
+
+type DeviceInfo = Awaited<ReturnType<typeof getDeviceInfo>>;
 
 const PrivacyAgreementModal: React.FC = () => {
   const [visible, setVisible] = useState(false);
@@ -95,16 +95,40 @@ const PrivacyAgreementModal: React.FC = () => {
    * 尝试上报激活事件，防重标记 `@activation_reported` 确保只上报一次。
    * - 已上报过 → 跳过
    * - 上报失败 → 不写标记，下次启动自动重试
+   *
+   * 上报顺序：先自有业务，成功后 → 再百度归因
    */
-  const tryReportActivation = async () => {
+  const tryReportActivation = async (): Promise<DeviceInfo | null> => {
     try {
       const alreadyReported = await AsyncStorage.getItem(ACTIVATION_REPORTED_KEY);
       if (alreadyReported === 'true') {
         console.log('[Activation] 已上报过，跳过');
-        return;
+        return null;
       }
 
-      // 1. 百度归因激活上报
+      // 设备信息只取一次，后续上报和调试弹窗都复用这份结果
+      const deviceInfo = await getDeviceInfo();
+      const deviceId = deviceInfo?.androidId || await ensureDeviceId();
+
+      // 1. 自有业务激活上报（含 oaid）
+      try {
+        await activationApi.report({
+          deviceId,
+          marketId: 1,
+          packageId: PACKAGE_ID,
+          oaid: deviceInfo?.oaid || '',
+        });
+        console.log('[Activation] 自有业务上报成功');
+
+        // 自有业务上报成功后写防重标记
+        await AsyncStorage.setItem(ACTIVATION_REPORTED_KEY, 'true');
+      } catch (e) {
+        console.error('[Activation] 自有业务激活上报失败:', e);
+        // 自有业务失败，不继续百度上报
+        return deviceInfo;
+      }
+
+      // 2. 百度归因激活上报（自有业务成功后才执行）
       try {
         await reportActivation();
         console.log('[Activation] 百度归因上报成功');
@@ -115,23 +139,10 @@ const PrivacyAgreementModal: React.FC = () => {
         }
       }
 
-      // 2. 自有业务激活上报
-      try {
-        const deviceId = await ensureDeviceId();
-        await activationApi.report({
-          deviceId,
-          marketId: 1,
-          packageId: PACKAGE_ID,
-        });
-        console.log('[Activation] 自有业务上报成功');
-
-        // 全部成功后写防重标记
-        await AsyncStorage.setItem(ACTIVATION_REPORTED_KEY, 'true');
-      } catch (e) {
-        console.error('[Activation] 自有业务激活上报失败:', e);
-      }
+      return deviceInfo;
     } catch (e) {
       console.error('[Activation] 激活上报异常:', e);
+      return null;
     }
   };
 
@@ -172,18 +183,17 @@ const PrivacyAgreementModal: React.FC = () => {
     setPrivacyAgreed(true);
 
     // 3. 上报激活事件（百度归因 + 自有业务）
-    await tryReportActivation();
+    const activationDeviceInfo = await tryReportActivation();
 
     // 4. 归因调试弹窗：环境变量 SHOW_ATTRIBUTION_DEBUG 控制
     if (env.SHOW_ATTRIBUTION_DEBUG) {
       try {
-        const deviceInfo = await getDeviceInfo();
-        const androidId = await ensureDeviceId();
+        const deviceInfo = activationDeviceInfo || await getDeviceInfo();
         const text =
           `SDK: oCPX v2.7.3\n` +
           `Android: ${deviceInfo?.sdkInt || ''} (${deviceInfo?.brand || ''} ${deviceInfo?.model || ''})\n` +
           `OAID: ${deviceInfo?.oaid || 'null'}\n` +
-          `ANDROID_ID: ${androidId || 'null'}\n` +
+          `ANDROID_ID: ${deviceInfo?.androidId || 'null'}\n` +
           `GUID: ${deviceInfo?.guid || ''}`;
         setDeviceInfoText(text);
         setShowDeviceInfo(true);

@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '../theme';
+import env from '../config/env';
 import {
   getUserId,
   fetchHistory,
@@ -29,10 +30,13 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { WebView } from 'react-native-webview';
+import Clipboard from '@react-native-clipboard/clipboard';
 
 const MAX_IMG_W = 220;
 const MAX_IMG_H = 300;
 const MIN_IMG_DIM = 80;
+const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|io|app|top|vip|xyz|cc|me|tv|co|info|biz)(?:\/[^\s]*)?)/gi;
+const URL_TRAILING_PUNCTUATION = /[.,!?;:，。！？；：）)]$/;
 
 /** 自适应宽高的图片组件 */
 const ImageMsg = ({ url, isUser }: { url: string; isUser: boolean }) => {
@@ -83,6 +87,75 @@ function isHtmlContent(text: string): boolean {
   return /<[a-z][\s\S]*>/i.test(text);
 }
 
+function normalizeUrl(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
+
+function splitTrailingPunctuation(url: string): { link: string; trailing: string } {
+  let link = url;
+  let trailing = '';
+  while (URL_TRAILING_PUNCTUATION.test(link)) {
+    trailing = link.slice(-1) + trailing;
+    link = link.slice(0, -1);
+  }
+  return { link, trailing };
+}
+
+const copyText = (text: string, message = '内容已复制到剪贴板') => {
+  Clipboard.setString(text);
+  Alert.alert('已复制', message);
+};
+
+const LinkedMessageText = ({ text, isUser }: { text: string; isUser: boolean }) => {
+  const parts: Array<{ text: string; isLink: boolean }> = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  URL_REGEX.lastIndex = 0;
+
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ text: text.slice(lastIndex, match.index), isLink: false });
+    }
+
+    const { link, trailing } = splitTrailingPunctuation(match[0]);
+    parts.push({ text: link, isLink: true });
+    if (trailing) {
+      parts.push({ text: trailing, isLink: false });
+    }
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ text: text.slice(lastIndex), isLink: false });
+  }
+
+  if (parts.length === 0) {
+    parts.push({ text, isLink: false });
+  }
+
+  const baseStyle = isUser ? styles.userMsgText : styles.msgText;
+  const linkStyle = isUser ? styles.userLinkText : styles.agentLinkText;
+
+  return (
+    <Text style={baseStyle} selectable={true}>
+      {parts.map((part, index) => {
+        if (!part.isLink) return <Text key={index}>{part.text}</Text>;
+
+        const url = normalizeUrl(part.text);
+        return (
+          <Text
+            key={index}
+            style={linkStyle}
+            onPress={() => Linking.openURL(url).catch(() => Alert.alert('提示', '无法打开链接'))}
+            onLongPress={() => copyText(url, '链接已复制到剪贴板')}>
+            {part.text}
+          </Text>
+        );
+      })}
+    </Text>
+  );
+};
+
 /** 渲染 HTML 内容（用于欢迎语等富文本） */
 const HtmlBubble = ({ html }: { html: string }) => {
   const [h, setH] = useState(0);
@@ -93,6 +166,7 @@ const HtmlBubble = ({ html }: { html: string }) => {
 </head><body>
 ${html}
 </body></html>`,
+    baseUrl: env.CS_API_BASE_URL,
   }), [html]);
 
   const availWidth = Dimensions.get('window').width - 68 - 48 - 32;
@@ -116,6 +190,7 @@ ${html}
         showsVerticalScrollIndicator={false}
         injectedJavaScript={js}
         onMessage={(e) => { const v = Number(e.nativeEvent.data); if (v > 0) setH(v); }}
+        originWhitelist={['*']}
       />
     </View>
   );
@@ -200,12 +275,32 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
     agentIdRef.current = null;
 
     let cancelled = false;
+    let historyTimer: ReturnType<typeof setTimeout> | null = null;
 
     getUserId().then((uid) => {
       if (cancelled) return;
       setUserId(uid);
 
-      // 建立 WebSocket 连接，等分配客服后再按 agentId 过滤历史
+      // 加载历史消息（无论是否分配到客服）
+      const loadHistory = (agentId?: string) => {
+        fetchHistory(uid, agentId).then((history) => {
+          if (cancelled) return;
+          const list = Array.isArray(history) ? history : [];
+          const normalized = list.map((m) => {
+            if (m.msgType === 'image' && !m.fileUrl && m.content) {
+              return { ...m, fileUrl: m.content, content: '' };
+            }
+            return m;
+          });
+          setMessages([...normalized, ...pendingRef.current]);
+          pendingRef.current = [];
+          historyLoadedRef.current = true;
+          setLoading(false);
+          scrollToBottom();
+        });
+      };
+
+      // 建立 WebSocket 连接
       const ws = createWebSocketConnection(uid, {
         onOpen: () => setConnected(true),
         onMessage: (msg) => {
@@ -219,36 +314,43 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
             setAgentAssigned(true);
             setNoAgent(false);
 
-            // 分配成功后，按 agentId 加载历史消息，避免串到其他客服的聊天记录
-            fetchHistory(uid, assignedAgentId).then((history) => {
-              setMessages([...history, ...pendingRef.current]);
-              pendingRef.current = [];
-              historyLoadedRef.current = true;
-              setLoading(false);
-              scrollToBottom();
-            });
+            // 按 agentId 加载历史消息（后端已放开 app 用户带 agentId 鉴权）
+            if (!historyLoadedRef.current) {
+              loadHistory(assignedAgentId);
+            }
           } else if (msg.type === 'system' && msg.no_agent) {
             setNoAgent(true);
-            const pending = pendingRef.current;
-            pendingRef.current = [];
-            setMessages([...pending]);
-            historyLoadedRef.current = true;
-            setLoading(false);
+            if (!historyLoadedRef.current) {
+              loadHistory();
+            }
           } else if (msg.type === 'agent_message') {
             const fileType = (msg.msgType as 'text' | 'image' | 'file') || 'text';
             let fileContent = msg.content || '';
             if (fileType === 'file' && !fileContent && msg.fileUrl) {
               fileContent = msg.fileUrl.replace(/\\/g, '/').split('/').pop()?.split('?')[0] || '文件';
             }
+            // 图片消息如果 fileUrl 为空则从 content 取（兼容服务端图片 URL 在 content 中的情况）
+            let fileUrl = msg.fileUrl;
+            if (fileType === 'image' && !fileUrl && msg.content) {
+              fileUrl = msg.content;
+              fileContent = '';
+            }
+
+            // 文本消息的 content 完全是图片 URL 时转为图片消息
+            if (fileType === 'text' && !fileUrl && msg.content && /^https?:\/\/[^\s]+\.(webp|png|jpg|jpeg|gif|bmp)(\?|$)/i.test(msg.content.trim())) {
+              fileUrl = msg.content.trim();
+              fileContent = '';
+            }
             const newMsg: ChatMessage = {
               content: fileContent,
-              msgType: fileType,
+              msgType: fileUrl ? 'image' : fileType,
               direction: (msg.direction as 'user' | 'agent') || 'agent',
-              fileUrl: msg.fileUrl,
+              fileUrl,
               timestamp: msg.timestamp,
               agentId: msg.agentId,
               _local: false,
             };
+
             if (!historyLoadedRef.current) {
               pendingRef.current.push(newMsg);
             } else {
@@ -279,9 +381,18 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
         onClose: () => setConnected(false),
       });
       wsRef.current = ws;
+
+      // 超时兜底：5 秒后如果还没加载完历史，主动加载并结束 loading
+      historyTimer = setTimeout(() => {
+        if (!historyLoadedRef.current) {
+          loadHistory();
+        }
+      }, 5000);
     });
 
     return () => {
+      cancelled = true;
+      if (historyTimer) clearTimeout(historyTimer);
       wsRef.current?.close();
       wsRef.current = null;
     };
@@ -414,15 +525,15 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.agentContent}>
               <View style={styles.agentWrap}>
                 <View style={styles.agentTail} />
-                {item.msgType === 'image' && item.fileUrl ? (
-                  <ImageMsg url={getFullFileUrl(item.fileUrl)!} isUser={false} />
+                {item.msgType === 'image' ? (
+                  <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser={false} />
                 ) : item.fileUrl || item.msgType === 'file' ? (
                   <FileMsg url={item.fileUrl || ''} name={item.content} isUser={false} />
                 ) : isHtmlContent(item.content) ? (
                   <HtmlBubble html={item.content} />
                 ) : (
                   <View style={styles.agentBubble}>
-                    <Text style={styles.msgText}>{item.content}</Text>
+                    <LinkedMessageText text={item.content} isUser={false} />
                   </View>
                 )}
               </View>
@@ -433,15 +544,15 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.userRow}>
             <View style={styles.userContent}>
               <View style={styles.userWrap}>
-                {item.msgType === 'image' && item.fileUrl ? (
+                {item.msgType === 'image' ? (
                   <View style={styles.userBubbleImage}>
-                    <ImageMsg url={getFullFileUrl(item.fileUrl)!} isUser={true} />
+                    <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser={true} />
                   </View>
                 ) : item.fileUrl || item.msgType === 'file' ? (
                   <FileMsg url={item.fileUrl || ''} name={item.content} isUser={true} />
                 ) : (
                   <View style={styles.userBubble}>
-                    <Text style={styles.userMsgText}>{item.content}</Text>
+                    <LinkedMessageText text={item.content} isUser={true} />
                   </View>
                 )}
                 <View style={[styles.userTail, { borderLeftColor: item.msgType === 'image' ? '#fff' : '#2563eb' }]} />
@@ -709,6 +820,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: '#222',
   },
+  agentLinkText: {
+    color: '#2563eb',
+    textDecorationLine: 'underline',
+    fontWeight: '600',
+  },
 
   /* User bubble (right) */
   userRow: {
@@ -760,6 +876,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: '#fff',
+  },
+  userLinkText: {
+    color: '#fff',
+    textDecorationLine: 'underline',
+    fontWeight: '700',
   },
   userAvatarCol: {
     width: 60,

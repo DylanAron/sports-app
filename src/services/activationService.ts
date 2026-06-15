@@ -7,6 +7,7 @@ export interface ActivationReportParams {
   deviceId: string;
   marketId?: number;
   packageId: string;
+  oaid?: string;
 }
 
 export const activationApi = {

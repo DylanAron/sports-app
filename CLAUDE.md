@@ -108,9 +108,9 @@ src/
 
 | 文件 | 字段 | 当前值 |
 |------|------|--------|
-| `package.json` | `version` | 1.0.3 |
-| `android/app/build.gradle` | `defaultConfig.versionName` | 1.0.3 |
-| `ios/SportsApp.xcodeproj/project.pbxproj` | `MARKETING_VERSION` | 1.0.3 |
+| `package.json` | `version` | 1.0.4 |
+| `android/app/build.gradle` | `defaultConfig.versionName` | 1.0.4 |
+| `ios/SportsApp.xcodeproj/project.pbxproj` | `MARKETING_VERSION` | 1.0.4 |
 
 更新 app 版本时，三处必须同时修改，保持一致。
 - 编辑 `src/config/env.ts` — `__DEV__` 自动选择配置，release 构建使用生产配置

@@ -1,5 +1,6 @@
 package com.huojian.qlh
 
+import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -10,6 +11,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.WritableMap
 import com.github.gzuliyujiang.oaid.DeviceIdentifier
 import kotlin.concurrent.thread
 
@@ -18,7 +20,36 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
     override fun getName(): String = "AppTrackModule"
 
     companion object {
+        private const val DEVICE_INFO_PREFS = "privacy_device_info"
+        private const val KEY_DEVICE_INFO_FETCHED = "device_info_fetched"
+        private const val KEY_ANDROID_ID = "android_id"
+        private const val KEY_OAID = "oaid"
+        private const val KEY_GUID = "guid"
         private var sdkInitialized = false
+        private var deviceInfoFetched = false
+        private var cachedAndroidId = ""
+        private var cachedOaid = ""
+        private var cachedGuid = ""
+        private val deviceInfoLock = Any()
+    }
+
+    private fun hasPrivacyAgreed(): Boolean =
+        SplashActivity.hasUserAgreed(reactApplicationContext)
+
+    private fun buildDeviceInfoMap(
+        androidId: String = cachedAndroidId,
+        oaid: String = cachedOaid,
+        guid: String = cachedGuid
+    ): WritableMap {
+        val map = com.facebook.react.bridge.Arguments.createMap()
+        map.putString("androidId", androidId)
+        map.putString("oaid", oaid)
+        map.putString("guid", guid)
+        map.putString("imei", "")
+        map.putString("sdkInt", Build.VERSION.SDK_INT.toString())
+        map.putString("brand", Build.BRAND)
+        map.putString("model", Build.MODEL)
+        return map
     }
 
     /**
@@ -27,6 +58,11 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
      */
     @ReactMethod
     fun initSdk(appId: Double, appSecret: String, promise: Promise) {
+        if (!hasPrivacyAgreed()) {
+            Log.w("AppTrack", "Privacy not agreed, block SDK init")
+            promise.reject("PRIVACY_NOT_AGREED", "Privacy agreement has not been accepted")
+            return
+        }
         if (sdkInitialized) {
             Log.d("AppTrack", "SDK already initialized, skip")
             promise.resolve(true)
@@ -60,6 +96,10 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
      */
     @ReactMethod
     fun reportActivation(promise: Promise) {
+        if (!hasPrivacyAgreed()) {
+            promise.reject("PRIVACY_NOT_AGREED", "Privacy agreement has not been accepted")
+            return
+        }
         if (!sdkInitialized) {
             promise.reject("NOT_INITIALIZED", "SDK not initialized")
             return
@@ -79,6 +119,10 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
      */
     @ReactMethod
     fun logAction(actionType: String, actionParam: String = "", promise: Promise) {
+        if (!hasPrivacyAgreed()) {
+            promise.reject("PRIVACY_NOT_AGREED", "Privacy agreement has not been accepted")
+            return
+        }
         if (!sdkInitialized) {
             promise.reject("NOT_INITIALIZED", "SDK not initialized")
             return
@@ -103,6 +147,10 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
      */
     @ReactMethod
     fun setPrivacyAgreed(agreed: Boolean) {
+        if (agreed && !hasPrivacyAgreed()) {
+            Log.w("AppTrack", "Privacy not agreed, block setPrivacyAgreed")
+            return
+        }
         if (!sdkInitialized) {
             Log.w("AppTrack", "SDK not initialized, skip setPrivacyAgreed")
             return
@@ -115,9 +163,8 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
             Log.d("AppTrack", "Privacy status set: ${if (agreed) "AGREE" else "DISAGREE"}")
 
             if (agreed) {
-                DeviceIdentifier.register(reactApplicationContext.getApplicationContext() as android.app.Application)
                 thread {
-                    val oaid = fetchOaid(reactApplicationContext)
+                    val oaid = getDeviceInfoOnce(reactApplicationContext).second
                     if (oaid.isNotBlank()) {
                         BaiduAction.setOaid(oaid)
                         Log.d("AppTrack", "OAID set: $oaid")
@@ -128,6 +175,47 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
             }
         } catch (e: Exception) {
             Log.e("AppTrack", "Failed to set privacy status", e)
+        }
+    }
+
+    private fun getDeviceInfoOnce(context: android.content.Context): Triple<String, String, String> {
+        synchronized(deviceInfoLock) {
+            if (deviceInfoFetched) {
+                return Triple(cachedAndroidId, cachedOaid, cachedGuid)
+            }
+
+            val prefs = context.getSharedPreferences(DEVICE_INFO_PREFS, Context.MODE_PRIVATE)
+            if (prefs.getBoolean(KEY_DEVICE_INFO_FETCHED, false)) {
+                cachedAndroidId = prefs.getString(KEY_ANDROID_ID, "") ?: ""
+                cachedOaid = prefs.getString(KEY_OAID, "") ?: ""
+                cachedGuid = prefs.getString(KEY_GUID, "") ?: ""
+                deviceInfoFetched = true
+                return Triple(cachedAndroidId, cachedOaid, cachedGuid)
+            }
+
+            val storedAndroidId = prefs.getString(KEY_ANDROID_ID, "") ?: ""
+            val androidId = storedAndroidId.ifBlank {
+                android.provider.Settings.Secure.getString(
+                    context.contentResolver,
+                    android.provider.Settings.Secure.ANDROID_ID
+                ) ?: ""
+            }
+
+            DeviceIdentifier.register(context.applicationContext as android.app.Application)
+            val oaid = fetchOaid(context)
+            val guid = DeviceIdentifier.getGUID(context) ?: ""
+
+            cachedAndroidId = androidId
+            cachedOaid = oaid
+            cachedGuid = guid
+            deviceInfoFetched = true
+            prefs.edit()
+                .putBoolean(KEY_DEVICE_INFO_FETCHED, true)
+                .putString(KEY_ANDROID_ID, cachedAndroidId)
+                .putString(KEY_OAID, cachedOaid)
+                .putString(KEY_GUID, cachedGuid)
+                .apply()
+            return Triple(cachedAndroidId, cachedOaid, cachedGuid)
         }
     }
 
@@ -147,48 +235,32 @@ class AppTrackModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
 
     @ReactMethod
     fun getDeviceInfo(promise: Promise) {
+        if (!hasPrivacyAgreed()) {
+            Log.w("AppTrack", "Privacy not agreed, block getDeviceInfo")
+            promise.resolve(buildDeviceInfoMap("", "", ""))
+            return
+        }
         val ctx = reactApplicationContext
-        val androidId = android.provider.Settings.Secure.getString(
-            ctx.contentResolver,
-            android.provider.Settings.Secure.ANDROID_ID
-        ) ?: ""
-        val sdkInt = Build.VERSION.SDK_INT
-
-        Log.d("AppTrack", "========== ANDROID_ID: $androidId ==========")
-        Log.d("AppTrack", "========== SDK_INT: $sdkInt ==========")
-        Log.d("AppTrack", "========== BRAND: ${Build.BRAND} ==========")
-        Log.d("AppTrack", "========== MODEL: ${Build.MODEL} ==========")
 
         thread {
             try {
-                DeviceIdentifier.register(ctx.applicationContext as android.app.Application)
-                val oaid = fetchOaid(ctx)
-                val guid = DeviceIdentifier.getGUID(ctx)
+                val (androidId, oaid, guid) = getDeviceInfoOnce(ctx)
+                Log.d("AppTrack", "========== ANDROID_ID: $androidId ==========")
+                Log.d("AppTrack", "========== SDK_INT: ${Build.VERSION.SDK_INT} ==========")
+                Log.d("AppTrack", "========== BRAND: ${Build.BRAND} ==========")
+                Log.d("AppTrack", "========== MODEL: ${Build.MODEL} ==========")
                 Log.d("AppTrack", "========== OAID: '$oaid' ==========")
                 Log.d("AppTrack", "========== GUID: '$guid' ==========")
+                if (sdkInitialized && oaid.isNotBlank()) {
+                    BaiduAction.setOaid(oaid)
+                }
                 Handler(Looper.getMainLooper()).post {
-                    val map = com.facebook.react.bridge.Arguments.createMap()
-                    map.putString("androidId", androidId)
-                    map.putString("oaid", oaid)
-                    map.putString("guid", guid)
-                    map.putString("imei", "")
-                    map.putString("sdkInt", sdkInt.toString())
-                    map.putString("brand", Build.BRAND)
-                    map.putString("model", Build.MODEL)
-                    promise.resolve(map)
+                    promise.resolve(buildDeviceInfoMap(androidId, oaid, guid))
                 }
             } catch (e: Exception) {
                 Log.e("AppTrack", "getDeviceInfo failed", e)
                 Handler(Looper.getMainLooper()).post {
-                    val map = com.facebook.react.bridge.Arguments.createMap()
-                    map.putString("androidId", androidId)
-                    map.putString("oaid", "")
-                    map.putString("guid", "")
-                    map.putString("imei", "")
-                    map.putString("sdkInt", sdkInt.toString())
-                    map.putString("brand", Build.BRAND)
-                    map.putString("model", Build.MODEL)
-                    promise.resolve(map)
+                    promise.resolve(buildDeviceInfoMap())
                 }
             }
         }
