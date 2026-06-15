@@ -127,13 +127,16 @@ export function getFullFileUrl(fileUrl?: string): string | undefined {
 }
 
 /**
- * 获取消息历史（支持按客服ID过滤）
+ * 获取消息历史（支持按客服ID过滤，支持分页）
  */
-export async function fetchHistory(userId: string, agentId?: string): Promise<ChatMessage[]> {
+export async function fetchHistory(userId: string, agentId?: string, params?: { size?: number; beforeId?: number }): Promise<ChatMessage[]> {
   try {
-    let url = `${env.CS_API_BASE_URL}/api/message/history/${userId}`;
+    let url = `${env.CS_API_BASE_URL}/api/message/history/${userId}?size=${params?.size || 20}`;
     if (agentId) {
-      url += `?agentId=${agentId}`;
+      url += `&agentId=${agentId}`;
+    }
+    if (params?.beforeId) {
+      url += `&beforeId=${params.beforeId}`;
     }
     const response = await fetch(url);
     if (!response.ok) return [];

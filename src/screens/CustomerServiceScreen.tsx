@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
   Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fonts } from '../theme';
+import { colors } from '../theme';
 import env from '../config/env';
 import {
   getUserId,
@@ -25,7 +25,6 @@ import {
   uploadFile,
   getFullFileUrl,
   type ChatMessage,
-  type WsConnection,
 } from '../services/chatService';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { launchImageLibrary } from 'react-native-image-picker';
@@ -34,17 +33,16 @@ import Clipboard from '@react-native-clipboard/clipboard';
 
 const MAX_IMG_W = 220;
 const MAX_IMG_H = 300;
-const MIN_IMG_DIM = 80;
 const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|io|app|top|vip|xyz|cc|me|tv|co|info|biz)(?:\/[^\s]*)?)/gi;
-const URL_TRAILING_PUNCTUATION = /[.,!?;:，。！？；：）)]$/;
 
-/** 自适应宽高的图片组件 */
-const ImageMsg = ({ url, isUser }: { url: string; isUser: boolean }) => {
+/* ───────────── 子组件 ───────────── */
+
+const ImageMsg = ({ url }: { url: string; isUser: boolean }) => {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
 
   useEffect(() => {
     Image.getSize(url, (w, h) => {
-      let scaledW = w, scaledH = h;
+      let scaledW = w; let scaledH = h;
       if (w > MAX_IMG_W) { scaledW = MAX_IMG_W; scaledH = (h / w) * MAX_IMG_W; }
       if (scaledH > MAX_IMG_H) { scaledH = MAX_IMG_H; scaledW = (scaledW / scaledH) * MAX_IMG_H; }
       setSize({ w: Math.round(scaledW), h: Math.round(scaledH) });
@@ -55,111 +53,16 @@ const ImageMsg = ({ url, isUser }: { url: string; isUser: boolean }) => {
     ? { width: size.w, height: size.h, borderRadius: 8 }
     : { width: 200, height: 200, borderRadius: 8 };
 
-  // 用户图片：白底气泡容器
-  if (isUser) {
-    return (
-      <View style={{ borderRadius: 8, padding: 2, marginTop: 6 }}>
-        <Image source={{ uri: url }} style={imgStyle} resizeMode="contain" />
-      </View>
-    );
-  }
-
-  // 客服图片：保持白底气泡
   return (
-    <View style={{ backgroundColor: '#fff', borderRadius: 8, padding: 2, marginTop: 6 }}>
+    <View style={{ borderRadius: 8, padding: 2, marginTop: 6 }}>
       <Image source={{ uri: url }} style={imgStyle} resizeMode="contain" />
     </View>
   );
 };
 
-type Props = {
-  navigation: NativeStackNavigationProp<any>;
-};
-
-/** 判断两个时间戳是否跨5分钟 */
-function isOver5Min(t1?: string, t2?: string): boolean {
-  if (!t1 || !t2) return true;
-  return Math.abs(new Date(t1).getTime() - new Date(t2).getTime()) >= 5 * 60 * 1000;
-}
-
-/** 判断字符串是否包含 HTML 标签 */
-function isHtmlContent(text: string): boolean {
-  return /<[a-z][\s\S]*>/i.test(text);
-}
-
-function normalizeUrl(url: string): string {
-  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
-}
-
-function splitTrailingPunctuation(url: string): { link: string; trailing: string } {
-  let link = url;
-  let trailing = '';
-  while (URL_TRAILING_PUNCTUATION.test(link)) {
-    trailing = link.slice(-1) + trailing;
-    link = link.slice(0, -1);
-  }
-  return { link, trailing };
-}
-
-const copyText = (text: string, message = '内容已复制到剪贴板') => {
-  Clipboard.setString(text);
-  Alert.alert('已复制', message);
-};
-
-const LinkedMessageText = ({ text, isUser }: { text: string; isUser: boolean }) => {
-  const parts: Array<{ text: string; isLink: boolean }> = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  URL_REGEX.lastIndex = 0;
-
-  while ((match = URL_REGEX.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ text: text.slice(lastIndex, match.index), isLink: false });
-    }
-
-    const { link, trailing } = splitTrailingPunctuation(match[0]);
-    parts.push({ text: link, isLink: true });
-    if (trailing) {
-      parts.push({ text: trailing, isLink: false });
-    }
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    parts.push({ text: text.slice(lastIndex), isLink: false });
-  }
-
-  if (parts.length === 0) {
-    parts.push({ text, isLink: false });
-  }
-
-  const baseStyle = isUser ? styles.userMsgText : styles.msgText;
-  const linkStyle = isUser ? styles.userLinkText : styles.agentLinkText;
-
-  return (
-    <Text style={baseStyle} selectable={true}>
-      {parts.map((part, index) => {
-        if (!part.isLink) return <Text key={index}>{part.text}</Text>;
-
-        const url = normalizeUrl(part.text);
-        return (
-          <Text
-            key={index}
-            style={linkStyle}
-            onPress={() => Linking.openURL(url).catch(() => Alert.alert('提示', '无法打开链接'))}
-            onLongPress={() => copyText(url, '链接已复制到剪贴板')}>
-            {part.text}
-          </Text>
-        );
-      })}
-    </Text>
-  );
-};
-
-/** 渲染 HTML 内容（用于欢迎语等富文本） */
 const HtmlBubble = ({ html }: { html: string }) => {
   const [h, setH] = useState(0);
-  const source = useMemo(() => ({
+  const source = useRef({
     html: `<!DOCTYPE html><html>
 <head><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>body{margin:0;padding:8px 12px;font-size:14px;line-height:1.5;color:#222;word-wrap:break-word;overflow-wrap:break-word}img{max-width:100%!important;height:auto}</style>
@@ -167,19 +70,10 @@ const HtmlBubble = ({ html }: { html: string }) => {
 ${html}
 </body></html>`,
     baseUrl: env.CS_API_BASE_URL,
-  }), [html]);
+  }).current;
 
   const availWidth = Dimensions.get('window').width - 68 - 48 - 32;
-
-  const js = `
-(function(){
-  var i = setInterval(function(){
-    var h = document.body.scrollHeight;
-    if(h > 0){ clearInterval(i); window.ReactNativeWebView.postMessage(''+h); }
-  }, 50);
-  setTimeout(function(){ clearInterval(i); }, 3000);
-})();
-`;
+  const js = `(function(){var i=setInterval(function(){var h=document.body.scrollHeight;if(h>0){clearInterval(i);window.ReactNativeWebView.postMessage(''+h);}},50);setTimeout(function(){clearInterval(i);},3000);})();`;
 
   return (
     <View style={[styles.agentBubble, { padding: 0, overflow: 'hidden', alignSelf: 'flex-start' }]}>
@@ -196,35 +90,15 @@ ${html}
   );
 };
 
-/** 文件消息气泡 */
-const FileMsg = ({ url, name, isUser }: { url: string; name: string; isUser: boolean }) => {
+const FileMsg = ({ url, name }: { url: string; name: string }) => {
   const fullUrl = getFullFileUrl(url) || url;
-  const handlePress = () => {
-    Linking.openURL(fullUrl).catch(() =>
-      Alert.alert('提示', '无法打开文件链接'),
-    );
-  };
-  const containerStyle = isUser ? styles.userBubble : styles.agentBubble;
-
-  // 文件名：优先使用 name 参数，为空才从 URL 提取
-  const fileName = (() => {
-    if (name) return name;
-    const parts = url.replace(/\\/g, '/').split('/').pop() || '';
-    return parts.split('?')[0] || '文件';
-  })();
+  const fileName = name || url.replace(/\\/g, '/').split('/').pop()?.split('?')[0] || '文件';
 
   return (
-    <TouchableOpacity onPress={handlePress} activeOpacity={0.7} style={containerStyle}>
+    <TouchableOpacity onPress={() => Linking.openURL(fullUrl).catch(() => Alert.alert('提示', '无法打开文件链接'))} activeOpacity={0.7} style={styles.agentBubble}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text style={{ fontSize: 20, marginRight: 8, color: isUser ? '#fff' : '#2563eb' }}>📎</Text>
-        <Text
-          style={{
-            fontSize: 14,
-            color: isUser ? '#fff' : '#2563eb',
-            textDecorationLine: 'underline',
-          }}
-          numberOfLines={2}
-          ellipsizeMode="middle">
+        <Text style={{ fontSize: 20, marginRight: 8, color: '#2563eb' }}>📎</Text>
+        <Text style={{ fontSize: 14, color: '#2563eb', textDecorationLine: 'underline' }} numberOfLines={2} ellipsizeMode="middle">
           {fileName}
         </Text>
       </View>
@@ -232,209 +106,185 @@ const FileMsg = ({ url, name, isUser }: { url: string; name: string; isUser: boo
   );
 };
 
-/** 格式化时间 HH:mm */
+const LinkedMessageText = ({ text, isUser }: { text: string; isUser: boolean }) => {
+  const parts: Array<{ text: string; isLink: boolean }> = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  URL_REGEX.lastIndex = 0;
+
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ text: text.slice(lastIndex, match.index), isLink: false });
+    }
+    const link = match[0].replace(/[.,!?;:，。！？；：）)]$/, '');
+    parts.push({ text: link, isLink: true });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    parts.push({ text: text.slice(lastIndex), isLink: false });
+  }
+  if (parts.length === 0) {
+    parts.push({ text, isLink: false });
+  }
+
+  return (
+    <Text style={isUser ? styles.userMsgText : styles.msgText}>
+      {parts.map((part, index) =>
+        !part.isLink ? (
+          <Text key={index}>{part.text}</Text>
+        ) : (
+          <Text
+            key={index}
+            style={isUser ? styles.userLinkText : styles.agentLinkText}
+            onPress={() => {
+              const url = /^https?:\/\//i.test(part.text) ? part.text : `https://${part.text}`;
+              Linking.openURL(url).catch(() => Alert.alert('提示', '无法打开链接'));
+            }}
+            onLongPress={() => {
+              Clipboard.setString(part.text);
+            }}
+          >
+            {part.text}
+          </Text>
+        )
+      )}
+    </Text>
+  );
+};
+
+/* ─────── 辅助函数 ─────── */
+
+function isHtmlContent(text: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(text);
+}
+
 function formatTime(ts?: string): string {
   if (!ts) return '';
   const d = new Date(ts);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/* ─────── 主组件 ─────── */
+
+type Props = {
+  navigation: NativeStackNavigationProp<any>;
+};
+
 const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
-  const [userId, setUserId] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
-  const [connected, setConnected] = useState(false);
-  const [agentAssigned, setAgentAssigned] = useState(false);
-  const [noAgent, setNoAgent] = useState(false);
   const [loading, setLoading] = useState(true);
-  const wsRef = useRef<WsConnection | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const wsRef = useRef<ReturnType<typeof createWebSocketConnection> | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
-  const historyLoadedRef = useRef(false);
-  const pendingRef = useRef<ChatMessage[]>([]);
-  const agentIdRef = useRef<string | null>(null);
-  const welcomeShownRef = useRef(false);
-  const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const imgSizesRef = useRef<Map<string, { w: number; h: number }>>(new Map());
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const uidRef = useRef('');
   const insets = useSafeAreaInsets();
 
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+  const setMessagesSync = useCallback((updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+    setMessages((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      messagesRef.current = next;
+      return next;
+    });
   }, []);
 
+  /* ── 初始化 ── */
   useEffect(() => {
-    setLoading(true);
-    setConnected(false);
-    setAgentAssigned(false);
-    setNoAgent(false);
-    setMessages([]);
-    setCurrentAgentId(null);
-    historyLoadedRef.current = false;
-    pendingRef.current = [];
-    agentIdRef.current = null;
-
     let cancelled = false;
-    let historyTimer: ReturnType<typeof setTimeout> | null = null;
 
-    getUserId().then((uid) => {
+    const init = async () => {
+      const uid = await getUserId();
       if (cancelled) return;
-      setUserId(uid);
+      uidRef.current = uid;
 
-      // 加载历史消息（无论是否分配到客服）
-      const loadHistory = (agentId?: string) => {
-        fetchHistory(uid, agentId).then((history) => {
-          if (cancelled) return;
-          const list = Array.isArray(history) ? history : [];
-          const normalized = list.map((m) => {
-            if (m.msgType === 'image' && !m.fileUrl && m.content) {
-              return { ...m, fileUrl: m.content, content: '' };
-            }
-            return m;
-          });
-          setMessages([...normalized, ...pendingRef.current]);
-          pendingRef.current = [];
-          historyLoadedRef.current = true;
-          setLoading(false);
-          scrollToBottom();
-        });
-      };
+      // 一次性加载最近 50 条历史消息
+      const history = await fetchHistory(uid, undefined, { size: 50 });
+      if (cancelled) return;
+      const msgs = Array.isArray(history) ? [...history].reverse() : [];
+      setMessagesSync(msgs);
+      setLoading(false);
 
-      // 建立 WebSocket 连接
+      // 建立 WebSocket
       const ws = createWebSocketConnection(uid, {
-        onOpen: () => setConnected(true),
+        onOpen: () => {},
         onMessage: (msg) => {
-          if (msg.type === 'system' && msg.agent_assigned) {
-            // 重连时如果已有客服，不再重复拉历史
-            if (historyLoadedRef.current && agentIdRef.current) return
-
-            const assignedAgentId = msg.agent_assigned;
-            agentIdRef.current = assignedAgentId;
-            setCurrentAgentId(assignedAgentId);
-            setAgentAssigned(true);
-            setNoAgent(false);
-
-            // 按 agentId 加载历史消息（后端已放开 app 用户带 agentId 鉴权）
-            if (!historyLoadedRef.current) {
-              loadHistory(assignedAgentId);
-            }
-          } else if (msg.type === 'system' && msg.no_agent) {
-            setNoAgent(true);
-            if (!historyLoadedRef.current) {
-              loadHistory();
-            }
-          } else if (msg.type === 'agent_message') {
-            const fileType = (msg.msgType as 'text' | 'image' | 'file') || 'text';
-            let fileContent = msg.content || '';
-            if (fileType === 'file' && !fileContent && msg.fileUrl) {
-              fileContent = msg.fileUrl.replace(/\\/g, '/').split('/').pop()?.split('?')[0] || '文件';
-            }
-            // 图片消息如果 fileUrl 为空则从 content 取（兼容服务端图片 URL 在 content 中的情况）
+          if (msg.type === 'agent_message') {
+            const fileType = (msg.msgType || 'text') as 'text' | 'image' | 'file';
+            let content = msg.content || '';
             let fileUrl = msg.fileUrl;
+
             if (fileType === 'image' && !fileUrl && msg.content) {
               fileUrl = msg.content;
-              fileContent = '';
+              content = '';
             }
-
-            // 文本消息的 content 完全是图片 URL 时转为图片消息
-            if (fileType === 'text' && !fileUrl && msg.content && /^https?:\/\/[^\s]+\.(webp|png|jpg|jpeg|gif|bmp)(\?|$)/i.test(msg.content.trim())) {
+            if (fileType === 'text' && !fileUrl && msg.content &&
+                /^https?:\/\/[^\s]+\.(webp|png|jpg|jpeg|gif|bmp)(\?|$)/i.test(msg.content.trim())) {
               fileUrl = msg.content.trim();
-              fileContent = '';
+              content = '';
             }
-            const newMsg: ChatMessage = {
-              content: fileContent,
-              msgType: fileUrl ? 'image' : fileType,
-              direction: (msg.direction as 'user' | 'agent') || 'agent',
-              fileUrl,
-              timestamp: msg.timestamp,
-              agentId: msg.agentId,
-              _local: false,
-            };
 
-            if (!historyLoadedRef.current) {
-              pendingRef.current.push(newMsg);
-            } else {
-              setMessages((prev) => {
-                if (msg.timestamp && prev.find((m) => m.timestamp === msg.timestamp)) return prev;
-                return [...prev, newMsg];
-              });
-            }
-            scrollToBottom();
+            setMessagesSync((prev) => [{
+              content,
+              msgType: fileUrl ? 'image' : fileType,
+              direction: 'agent',
+              fileUrl,
+              timestamp: msg.timestamp || new Date().toISOString(),
+            }, ...prev]);
           } else if (msg.type === 'welcome_message') {
-            // 每次进入页面只弹一次欢迎语，重连不再重复
-            if (welcomeShownRef.current) return
-            welcomeShownRef.current = true
-            const welcomeMsg: ChatMessage = {
-              content: msg.content || '',
+            // 将欢迎语作为客服消息添加到列表
+            const content = msg.content || '您好，欢迎来到在线客服，请问有什么可以帮助您的？';
+            setMessagesSync((prev) => [{
+              content,
               msgType: 'text',
               direction: 'agent',
+              timestamp: msg.timestamp || new Date().toISOString(),
               _welcome: true,
-            } as ChatMessage;
-            if (!historyLoadedRef.current) {
-              pendingRef.current.push(welcomeMsg);
-            } else {
-              setMessages((prev) => [...prev, welcomeMsg]);
-            }
-            scrollToBottom();
+            }, ...prev]);
           }
         },
-        onClose: () => setConnected(false),
+        onClose: () => {},
       });
       wsRef.current = ws;
+    };
 
-      // 超时兜底：5 秒后如果还没加载完历史，主动加载并结束 loading
-      historyTimer = setTimeout(() => {
-        if (!historyLoadedRef.current) {
-          loadHistory();
-        }
-      }, 5000);
-    });
+    init();
 
     return () => {
       cancelled = true;
-      if (historyTimer) clearTimeout(historyTimer);
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [scrollToBottom]);
+  }, [setMessagesSync]);
 
-  // 新消息时滚动到底部
-  useEffect(() => {
-    if (messages.length > 0) scrollToBottom();
-  }, [messages, scrollToBottom]);
-
-  // 发送消息
+  /* ── 发送文本 ── */
   const sendMessage = () => {
     const text = inputText.trim();
-    if (!text || !wsRef.current) return;
+    if (!text) return;
 
-    const localMsg: ChatMessage = {
+    setMessagesSync((prev) => [{
       content: text,
       msgType: 'text',
       direction: 'user',
       timestamp: new Date().toISOString(),
       _local: true,
-    };
-    setMessages((prev) => [...prev, localMsg]);
-    scrollToBottom();
+    }, ...prev]);
 
-    wsRef.current.send(
-      JSON.stringify({
-        type: 'user_message',
-        content: text,
-        msgType: 'text',
-        channelCode: 'app',
-      }),
-    );
+    wsRef.current?.send(JSON.stringify({
+      type: 'user_message',
+      content: text,
+      msgType: 'text',
+      channelCode: 'app',
+    }));
 
     setInputText('');
-    inputRef.current?.focus();
   };
 
-  // ── 上传并发送文件/图片 ──
+  /* ── 上传文件/图片 ── */
   const uploadAndSend = async (file: { uri: string; type: string; name: string }) => {
     if (!wsRef.current) return;
-
     setUploading(true);
     try {
       const result = await uploadFile(file);
@@ -442,80 +292,61 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
         Alert.alert('上传失败', '图片上传失败，请重试');
         return;
       }
-
       const isImage = file.type.startsWith('image/');
       const msgType = isImage ? 'image' : 'file';
 
-      // 本地先行显示
-      setMessages((prev) => [...prev, {
+      setMessagesSync((prev) => [{
         content: file.name,
         msgType,
         direction: 'user',
         fileUrl: result.url,
         timestamp: new Date().toISOString(),
         _local: true,
-      }]);
-      scrollToBottom();
+      }, ...prev]);
 
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'user_message',
-          content: file.name,
-          msgType,
-          fileUrl: result.url,
-          channelCode: 'app',
-        }),
-      );
-    } catch (e) {
-      console.error('uploadAndSend error:', e);
+      wsRef.current.send(JSON.stringify({
+        type: 'user_message',
+        content: file.name,
+        msgType,
+        fileUrl: result.url,
+        channelCode: 'app',
+      }));
+    } catch {
       Alert.alert('上传失败', '图片上传异常，请重试');
     } finally {
       setUploading(false);
     }
   };
 
-  // ── 选择图片 ──
   const pickImage = async () => {
     try {
-      const res = await launchImageLibrary({
-        mediaType: 'photo',
-        quality: 0.8,
-        maxWidth: 1920,
-        maxHeight: 1920,
-      });
+      const res = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, maxWidth: 1920, maxHeight: 1920 });
       if (res.didCancel || !res.assets?.[0]) return;
       const asset = res.assets[0];
       if (asset.uri) {
-        uploadAndSend({
-          uri: asset.uri,
-          type: asset.type || 'image/jpeg',
-          name: asset.fileName || `image_${Date.now()}.jpg`,
-        });
+        uploadAndSend({ uri: asset.uri, type: asset.type || 'image/jpeg', name: asset.fileName || `image_${Date.now()}.jpg` });
       }
-    } catch (e) {
-      console.warn('pickImage error:', e);
+    } catch {
+      // ignore
     }
   };
 
-  // ── 点击图片按钮 ──
-  const handleAttachmentPress = () => pickImage();
-
-  // ── 渲染消息气泡 ──
+  /* ── 渲染气泡 ── */
   const renderItem = ({ item, index }: { item: ChatMessage; index: number }) => {
-    const prev = index > 0 ? messages[index - 1] : null;
-    const showTime = !prev || isOver5Min(prev.timestamp || prev.createdAt, item.timestamp || item.createdAt);
+    const prev = index > 0 ? messagesRef.current[index - 1] : null;
+    const showTime = !prev ||
+      Math.abs(new Date(item.timestamp || '').getTime() - new Date(prev.timestamp || '').getTime()) >= 5 * 60 * 1000;
     const isUser = item.direction === 'user';
 
     return (
       <View>
         {showTime && (
           <View style={styles.timeDivider}>
-            <Text style={styles.timeText}>{formatTime(item.timestamp || item.createdAt)}</Text>
+            <Text style={styles.timeText}>{formatTime(item.timestamp)}</Text>
           </View>
         )}
 
         {!isUser ? (
-          /* 客服消息 → 左对齐 */
           <View style={styles.agentRow}>
             <View style={styles.agentAvatarCol}>
               <View style={styles.agentAvatarBorder}>
@@ -528,7 +359,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
                 {item.msgType === 'image' ? (
                   <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser={false} />
                 ) : item.fileUrl || item.msgType === 'file' ? (
-                  <FileMsg url={item.fileUrl || ''} name={item.content} isUser={false} />
+                  <FileMsg url={item.fileUrl || ''} name={item.content} />
                 ) : isHtmlContent(item.content) ? (
                   <HtmlBubble html={item.content} />
                 ) : (
@@ -540,19 +371,18 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </View>
         ) : (
-          /* 用户消息 → 右对齐 */
           <View style={styles.userRow}>
             <View style={styles.userContent}>
               <View style={styles.userWrap}>
                 {item.msgType === 'image' ? (
                   <View style={styles.userBubbleImage}>
-                    <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser={true} />
+                    <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser />
                   </View>
                 ) : item.fileUrl || item.msgType === 'file' ? (
-                  <FileMsg url={item.fileUrl || ''} name={item.content} isUser={true} />
+                  <FileMsg url={item.fileUrl || ''} name={item.content} />
                 ) : (
                   <View style={styles.userBubble}>
-                    <LinkedMessageText text={item.content} isUser={true} />
+                    <LinkedMessageText text={item.content} isUser />
                   </View>
                 )}
                 <View style={[styles.userTail, { borderLeftColor: item.msgType === 'image' ? '#fff' : '#2563eb' }]} />
@@ -573,7 +403,8 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+    >
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* Header */}
@@ -595,27 +426,27 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
       ) : messages.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>您好！欢迎来到在线客服</Text>
-          <Text style={styles.emptySub}>
-            {noAgent
-              ? '当前没有在线客服，您可留言，我们会尽快回复您'
-              : '请描述您的问题，我们会尽快为您解答'}
-          </Text>
+          <Text style={styles.emptySub}>请描述您的问题，我们会尽快为您解答</Text>
         </View>
       ) : (
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(_, i) => String(i)}
+          inverted
+          keyExtractor={(item, index) => {
+            if (item.id) return String(item.id);
+            if (item.timestamp) return `${item.timestamp}-${item.direction}-${index}`;
+            return String(index);
+          }}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          onContentSizeChange={scrollToBottom}
           showsVerticalScrollIndicator={false}
         />
       )}
 
       {/* 输入区 */}
       <View style={styles.inputContainer}>
-        <TouchableOpacity style={styles.attachBtn} onPress={handleAttachmentPress} disabled={uploading}>
+        <TouchableOpacity style={styles.attachBtn} onPress={pickImage} disabled={uploading}>
           <Text style={styles.attachBtnText}>+</Text>
         </TouchableOpacity>
         <TextInput
@@ -624,7 +455,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
           value={inputText}
           onChangeText={setInputText}
           placeholder="请输入您的问题..."
-          placeholderTextColor={colors.textDim}
+          placeholderTextColor="#999"
           multiline
           maxLength={1000}
           editable={!uploading}
@@ -637,7 +468,8 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
           <TouchableOpacity
             style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
             onPress={sendMessage}
-            disabled={!inputText.trim()}>
+            disabled={!inputText.trim()}
+          >
             <Text style={styles.sendBtnText}>发送</Text>
           </TouchableOpacity>
         )}
@@ -689,11 +521,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#222',
   },
-  headerSub: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 1,
-  },
   headerRight: {
     width: 36,
   },
@@ -728,7 +555,7 @@ const styles = StyleSheet.create({
   /* Messages */
   listContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 8,
   },
   timeDivider: {
@@ -741,7 +568,7 @@ const styles = StyleSheet.create({
     color: '#B8B8B8',
   },
 
-  /* Agent bubble (left) */
+  /* Agent message (left) */
   agentRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -803,18 +630,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  agentBubbleImage: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderTopLeftRadius: 4,
-    padding: 2,
-    marginTop: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 4,
-    elevation: 1,
-  },
   msgText: {
     fontSize: 15,
     lineHeight: 22,
@@ -826,7 +641,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* User bubble (right) */
+  /* User message (right) */
   userRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -890,7 +705,6 @@ const styles = StyleSheet.create({
   userAvatar: {
     width: 56,
     height: 56,
-    borderRadius: 0,
   },
   userAvatarBorder: {
     width: 56,
@@ -944,8 +758,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-
-  /* Attach button */
   attachBtn: {
     width: 36,
     height: 36,
@@ -961,8 +773,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontWeight: '600',
   },
-
-  /* Uploading */
   uploadingBtn: {
     backgroundColor: colors.primary,
     borderRadius: 20,
@@ -971,7 +781,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
 });
 
 export default CustomerServiceScreen;

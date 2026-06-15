@@ -11,12 +11,12 @@ import HomeScreen from '../screens/HomeScreen';
 import AnalysisScreen from '../screens/AnalysisScreen';
 import ScoreScreen from '../screens/ScoreScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import CustomerServiceScreen from '../screens/CustomerServiceScreen';
 import PrivacyScreen from '../screens/PrivacyScreen';
 import UserAgreementScreen from '../screens/UserAgreementScreen';
 import HelpScreen from '../screens/HelpScreen';
 import AboutScreen from '../screens/AboutScreen';
 import PrivacyAgreementModal from '../components/PrivacyAgreementModal';
+import CustomerServiceScreen from '../screens/CustomerServiceScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
