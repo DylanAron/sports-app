@@ -14,6 +14,7 @@ import {
   Alert,
   Dimensions,
   Linking,
+  Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
@@ -92,19 +93,34 @@ ${html}
   );
 };
 
-const FileMsg = ({ url, name }: { url: string; name: string }) => {
+const FileMsg = ({ url, name, isUser }: { url: string; name: string; isUser: boolean }) => {
   const fullUrl = getFullFileUrl(url) || url;
   const fileName = name || url.replace(/\\/g, '/').split('/').pop()?.split('?')[0] || '文件';
+  // 屏幕宽度 - 头像(56) - 头像margin - Row外边距 → 可用宽度取 85%
+  const maxBubbleWidth = (Dimensions.get('window').width - 56 - 8 - 48) * 0.85;
 
   return (
-    <TouchableOpacity onPress={() => Linking.openURL(fullUrl).catch(() => Alert.alert('提示', '无法打开文件链接'))} activeOpacity={0.7} style={styles.agentBubble}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text style={{ fontSize: 20, marginRight: 8, color: '#2563eb' }}>📎</Text>
-        <Text style={{ fontSize: 14, color: '#2563eb', textDecorationLine: 'underline' }} numberOfLines={2} ellipsizeMode="middle">
-          {fileName}
-        </Text>
+    <Pressable
+      onPress={() => Linking.openURL(fullUrl).catch(() => Alert.alert('提示', '无法打开文件链接'))}
+      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', position: 'relative' }}>
+        {!isUser && <View style={[styles.agentTail, { left: -8, marginTop: 18 }]} />}
+        <View style={[isUser ? styles.userFileBubble : styles.agentBubble, { maxWidth: maxBubbleWidth }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ fontSize: 20, marginRight: 8, color: '#2563eb' }}>📎</Text>
+            <Text
+              style={{ fontSize: 14, color: isUser ? '#fff' : '#2563eb', textDecorationLine: 'underline', flexShrink: 1 }}
+              numberOfLines={1}
+              ellipsizeMode="middle"
+            >
+              {fileName}
+            </Text>
+          </View>
+        </View>
+        {isUser && <View style={[styles.userFileTail, { borderLeftColor: '#2563eb' }]} />}
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 };
 
@@ -130,7 +146,7 @@ const LinkedMessageText = ({ text, isUser }: { text: string; isUser: boolean }) 
   }
 
   return (
-    <Text style={isUser ? styles.userMsgText : styles.msgText}>
+    <Text style={isUser ? styles.userMsgText : styles.msgText} selectable>
       {parts.map((part, index) =>
         !part.isLink ? (
           <Text key={index}>{part.text}</Text>
@@ -232,13 +248,14 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
       if (cancelled) return;
       const msgs = Array.isArray(history) ? [...history].reverse() : [];
 
-      // 跟踪最后一条消息 ID，并通知后端
-      if (msgs.length > 0) {
-        const lastId = msgs[msgs.length - 1].id;
-        if (lastId) {
-          markLastRead(lastId);
-          markUserRead(uid, lastId);
-        }
+      // msgs 是 [最新(id最大), ..., 最旧(id最小)]（reverse 后），取第一条有 id 的（即 id 最大的）
+      let newestWithId: ChatMessage | undefined;
+      for (const m of msgs) {
+        if (m.id != null) { newestWithId = m; break; }
+      }
+      if (newestWithId?.id) {
+        markLastRead(newestWithId.id);
+        await markUserRead(uid, newestWithId.id);
       }
 
       setMessagesSync(msgs);
@@ -281,7 +298,8 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
             // 聊天页内收到的消息，标记已读
             if (msg.id) {
               markLastRead(msg.id);
-              markUserRead(uidRef.current, msg.id);
+              // fire-and-forget，不阻塞 UI
+              markUserRead(uidRef.current, msg.id).catch(() => {});
             }
           } else if (msg.type === 'welcome_message') {
             // 将欢迎语作为客服消息添加到列表
@@ -405,38 +423,44 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
               </View>
             </View>
             <View style={styles.agentContent}>
-              <View style={styles.agentWrap}>
-                <View style={styles.agentTail} />
-                {item.msgType === 'image' ? (
-                  <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser={false} />
-                ) : item.fileUrl || item.msgType === 'file' ? (
-                  <FileMsg url={item.fileUrl || ''} name={item.content} />
-                ) : isHtmlContent(item.content) ? (
-                  <HtmlBubble html={item.content} />
-                ) : (
-                  <View style={styles.agentBubble}>
-                    <LinkedMessageText text={item.content} isUser={false} />
-                  </View>
-                )}
-              </View>
+              {item.fileUrl || item.msgType === 'file' ? (
+                <FileMsg url={item.fileUrl || ''} name={item.content} isUser={false} />
+              ) : (
+                <View style={styles.agentWrap}>
+                  <View style={styles.agentTail} />
+                  {item.msgType === 'image' ? (
+                    <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser={false} />
+                  ) : isHtmlContent(item.content) ? (
+                    <HtmlBubble html={item.content} />
+                  ) : (
+                    <View style={styles.agentBubble}>
+                      <LinkedMessageText text={item.content} isUser={false} />
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           </View>
         ) : (
           <View style={styles.userRow}>
             <View style={styles.userContent}>
               <View style={styles.userWrap}>
-                {item.msgType === 'image' ? (
-                  <View style={styles.userBubbleImage}>
-                    <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser />
-                  </View>
-                ) : item.fileUrl || item.msgType === 'file' ? (
-                  <FileMsg url={item.fileUrl || ''} name={item.content} />
+                {item.fileUrl || item.msgType === 'file' ? (
+                  <FileMsg url={item.fileUrl || ''} name={item.content} isUser />
                 ) : (
-                  <View style={styles.userBubble}>
-                    <LinkedMessageText text={item.content} isUser />
-                  </View>
+                  <>
+                    {item.msgType === 'image' ? (
+                      <View style={styles.userBubbleImage}>
+                        <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser />
+                      </View>
+                    ) : (
+                      <View style={styles.userBubble}>
+                        <LinkedMessageText text={item.content} isUser />
+                      </View>
+                    )}
+                    <View style={[styles.userTail, { borderLeftColor: item.msgType === 'image' ? '#fff' : '#2563eb' }]} />
+                  </>
                 )}
-                <View style={[styles.userTail, { borderLeftColor: item.msgType === 'image' ? '#fff' : '#2563eb' }]} />
               </View>
             </View>
             <View style={styles.userAvatarCol}>
@@ -712,7 +736,6 @@ const styles = StyleSheet.create({
   agentBubble: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    borderTopLeftRadius: 4,
     paddingHorizontal: 14,
     paddingVertical: 10,
     marginTop: 6,
@@ -765,6 +788,36 @@ const styles = StyleSheet.create({
     marginTop: 6,
     zIndex: 1,
   },
+  userMsgText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#fff',
+  },
+  userLinkText: {
+    color: '#fff',
+    textDecorationLine: 'underline',
+    fontWeight: '700',
+  },
+  userFileBubble: {
+    backgroundColor: '#2563eb',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 6,
+  },
+  userFileTail: {
+    width: 0,
+    height: 0,
+    borderTopWidth: 8,
+    borderBottomWidth: 8,
+    borderLeftWidth: 10,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    position: 'absolute',
+    right: -8,
+    marginTop: 18,
+    zIndex: 2,
+  },
   userTail: {
     width: 0,
     height: 0,
@@ -778,16 +831,6 @@ const styles = StyleSheet.create({
     right: -8,
     marginTop: 18,
     zIndex: 2,
-  },
-  userMsgText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#fff',
-  },
-  userLinkText: {
-    color: '#fff',
-    textDecorationLine: 'underline',
-    fontWeight: '700',
   },
   userAvatarCol: {
     width: 60,
