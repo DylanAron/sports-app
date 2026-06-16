@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, StatusBar, Modal, ScrollView } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions, StatusBar, Modal } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
 import env from '../config/env';
@@ -80,7 +80,7 @@ const HomeScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#e8f0fe" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       {/* 全局背景图 */}
       <Image source={bgSource} style={styles.bgImage} resizeMode="cover" />
