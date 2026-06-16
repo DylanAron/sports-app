@@ -7,6 +7,8 @@ import { useNavigation } from '@react-navigation/native';
 import { colors, fonts } from '../theme';
 import { tabGuideApi } from '../services';
 import TabGuideModal from '../components/TabGuideModal';
+import FloatingNotification from '../components/FloatingNotification';
+import { useChatUnread } from '../contexts/ChatUnreadContext';
 import HomeScreen from '../screens/HomeScreen';
 import AnalysisScreen from '../screens/AnalysisScreen';
 import ScoreScreen from '../screens/ScoreScreen';
@@ -61,6 +63,8 @@ function TabNavigator() {
   const shownTabsRef = useRef<Set<string>>(new Set());
   const pendingTabRef = useRef<string | null>(null);
   const pendingImageUrlRef = useRef<string>('');
+
+  const { unreadCount } = useChatUnread();
 
   useEffect(() => {
     tabGuideApi.getList().then(list => {
@@ -164,12 +168,21 @@ function TabNavigator() {
         component={ProfileScreen}
         options={{
           tabBarLabel: '我的',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#ef4444',
+            fontSize: 10,
+            minWidth: 16,
+            height: 16,
+            borderRadius: 8,
+          },
           tabBarIcon: ({ focused }) => (
             <TabIcon label="我的" icon="👤" focused={focused} />
           ),
         }}
       />
     </Tab.Navigator>
+      <FloatingNotification />
       <TabGuideModal visible={guideModalVisible} imageUrl={guideImageUrl} onClose={() => setGuideModalVisible(false)} onContact={() => navigation.navigate('CustomerService')} />
     </View>);
 }

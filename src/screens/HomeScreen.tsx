@@ -14,12 +14,12 @@ const CARD_W = (SCREEN_WIDTH - 60) / 2;
 
 // ai_ 图片
 const aiImages: Record<string, any> = {
-  corner: require('../assets/ai/ai_corner.webp'),
-  goal: require('../assets/ai/ai_goal.webp'),
-  half_full: require('../assets/ai/ai_half_full.webp'),
-  qingbao: require('../assets/ai/ai_qingbao.webp'),
-  score: require('../assets/ai/ai_score.webp'),
-  win_lose: require('../assets/ai/ai_win_lose.webp'),
+  corner: require('../assets/new/ai_corner.webp'),
+  goal: require('../assets/new/ai_goal.webp'),
+  half_full: require('../assets/new/ai_half_full.webp'),
+  qingbao: require('../assets/new/ai_qingbao.webp'),
+  score: require('../assets/new/ai_score.webp'),
+  win_lose: require('../assets/new/ai_lose_win.webp'),
 };
 
 type ApiModule = 'corner' | 'goal' | 'half_full' | 'score' | 'win_lose';

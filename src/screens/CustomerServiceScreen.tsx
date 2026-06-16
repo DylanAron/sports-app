@@ -24,8 +24,10 @@ import {
   createWebSocketConnection,
   uploadFile,
   getFullFileUrl,
+  markUserRead,
   type ChatMessage,
 } from '../services/chatService';
+import { useChatUnread } from '../contexts/ChatUnreadContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { WebView } from 'react-native-webview';
@@ -168,9 +170,15 @@ function formatTime(ts?: string): string {
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
+  route?: {
+    params?: {
+      filterAgentId?: number;
+      filterAgentName?: string;
+    };
+  };
 };
 
-const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
+const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -183,6 +191,17 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
   const uidRef = useRef('');
   const insets = useSafeAreaInsets();
 
+  // 从路由参数中读取筛选信息
+  const [filterAgentId, setFilterAgentId] = useState<number | undefined>(
+    route?.params?.filterAgentId || undefined,
+  );
+  const [filterAgentName, setFilterAgentName] = useState<string | undefined>(
+    route?.params?.filterAgentName || undefined,
+  );
+
+  // 使用全局未读 Context
+  const { resetUnread, markLastRead, setChatFocused } = useChatUnread();
+
   const setMessagesSync = useCallback((updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
     setMessages((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
@@ -190,6 +209,13 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
       return next;
     });
   }, []);
+
+  /* ── 屏幕焦点管理：延迟到聊天 WS 就绪后才标记已聚焦，
+      避免 resetUnread() 后 ~ WS 连接前这段间隙收到 push 消息被丢弃 ── */
+  useEffect(() => {
+    // cleanup 时立刻取消聚焦，保证退出页面后 push WS 能增量计数
+    return () => setChatFocused(false);
+  }, [setChatFocused]);
 
   /* ── 初始化 ── */
   useEffect(() => {
@@ -200,16 +226,33 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
       if (cancelled) return;
       uidRef.current = uid;
 
-      // 一次性加载最近 50 条历史消息
-      const history = await fetchHistory(uid, undefined, { size: 50 });
+      // 根据筛选参数决定查询哪个客服的历史消息
+      const agentIdParam = filterAgentId ? String(filterAgentId) : undefined;
+      const history = await fetchHistory(uid, agentIdParam, { size: 50 });
       if (cancelled) return;
       const msgs = Array.isArray(history) ? [...history].reverse() : [];
+
+      // 跟踪最后一条消息 ID，并通知后端
+      if (msgs.length > 0) {
+        const lastId = msgs[msgs.length - 1].id;
+        if (lastId) {
+          markLastRead(lastId);
+          markUserRead(uid, lastId);
+        }
+      }
+
       setMessagesSync(msgs);
       setLoading(false);
 
+      // 进入聊天页即清零未读数（用户看到消息了）
+      resetUnread();
+
       // 建立 WebSocket
       const ws = createWebSocketConnection(uid, {
-        onOpen: () => {},
+        onOpen: () => {
+          // 聊天 WS 真正连通后才屏蔽 push 通知，杜绝间隙丢消息
+          setChatFocused(true);
+        },
         onMessage: (msg) => {
           if (msg.type === 'agent_message') {
             const fileType = (msg.msgType || 'text') as 'text' | 'image' | 'file';
@@ -227,12 +270,19 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
             }
 
             setMessagesSync((prev) => [{
+              id: msg.id,
               content,
               msgType: fileUrl ? 'image' : fileType,
               direction: 'agent',
               fileUrl,
               timestamp: msg.timestamp || new Date().toISOString(),
             }, ...prev]);
+
+            // 聊天页内收到的消息，标记已读
+            if (msg.id) {
+              markLastRead(msg.id);
+              markUserRead(uidRef.current, msg.id);
+            }
           } else if (msg.type === 'welcome_message') {
             // 将欢迎语作为客服消息添加到列表
             const content = msg.content || '您好，欢迎来到在线客服，请问有什么可以帮助您的？';
@@ -254,10 +304,11 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
 
     return () => {
       cancelled = true;
+      setChatFocused(false);
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [setMessagesSync]);
+  }, [setMessagesSync, filterAgentId, markLastRead, resetUnread, setChatFocused]);
 
   /* ── 发送文本 ── */
   const sendMessage = () => {
@@ -418,6 +469,23 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.headerRight} />
       </View>
 
+      {/* 筛选横幅 */}
+      {filterAgentId && !loading && (
+        <View style={styles.filterBanner}>
+          <Text style={styles.filterText}>
+            查看与客服 {filterAgentName || filterAgentId} 的对话
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              setFilterAgentId(undefined);
+              setFilterAgentName(undefined);
+            }}
+          >
+            <Text style={styles.filterClearText}>查看全部</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* 消息列表 */}
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -550,6 +618,30 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     lineHeight: 20,
+  },
+
+  /* Filter Banner */
+  filterBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dbeafe',
+  },
+  filterText: {
+    fontSize: 13,
+    color: '#2563eb',
+    fontWeight: '500',
+    flex: 1,
+  },
+  filterClearText: {
+    fontSize: 13,
+    color: '#2563eb',
+    fontWeight: '600',
+    marginLeft: 12,
   },
 
   /* Messages */

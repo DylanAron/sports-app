@@ -28,8 +28,9 @@ export interface ChatMessage {
 }
 
 /** WebSocket 消息（通信层格式） */
-interface WsMessage {
+export interface WsMessage {
   type: string;
+  id?: number;
   content?: string;
   msgType?: MessageType;
   fileUrl?: string;
@@ -147,16 +148,77 @@ export async function fetchHistory(userId: string, agentId?: string, params?: { 
   }
 }
 
+// ────────────────────────── 推送通知 REST API ──────────────────────────
+
+/** 未读信息响应 */
+export interface UnreadInfo {
+  count: number;
+  afterId: number;
+  latestAgentId?: number;
+  latestAgentName?: string;
+}
+
+/**
+ * 查询用户未读消息数量及最新客服信息。
+ * 失败时返回 null，调用方不应覆盖已有数据。
+ */
+export async function fetchUnreadInfo(userId: string, afterId: number = 0): Promise<UnreadInfo | null> {
+  try {
+    const response = await fetch(
+      `${env.CS_API_BASE_URL}/api/message/unread-count/${userId}?afterId=${afterId}`,
+    );
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 通知后端用户已看到消息（记录最后已读消息 ID）
+ */
+export async function markUserRead(userId: string, lastReadMsgId: number): Promise<void> {
+  try {
+    await fetch(`${env.CS_API_BASE_URL}/api/message/mark-user-read/${userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lastReadMsgId }),
+    });
+  } catch {
+    // 静默失败，不影响用户体验
+  }
+}
+
 // ────────────────────────── WebSocket ──────────────────────────
 
 /**
- * 创建 WebSocket 连接
+ * 创建聊天 WebSocket 连接 (/ws/user/{userId})
+ * 触发客服分配、问候语等完整聊天逻辑
  */
 export function createWebSocketConnection(
   userId: string,
   handlers: WsHandlers,
 ): WsConnection {
   const url = `${env.WS_BASE_URL}/user/${userId}`;
+  return createRawWebSocket(url, handlers);
+}
+
+/**
+ * 创建推送 WebSocket 连接 (/ws/push/{userId})
+ * 仅注册通道用于接收新消息通知，不触发客服分配/问候语
+ */
+export function createPushWebSocketConnection(
+  userId: string,
+  handlers: WsHandlers,
+): WsConnection {
+  const url = `${env.WS_BASE_URL}/push/${userId}`;
+  return createRawWebSocket(url, handlers);
+}
+
+/**
+ * 底层 WebSocket 连接，支持自动重连
+ */
+function createRawWebSocket(url: string, handlers: WsHandlers): WsConnection {
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
