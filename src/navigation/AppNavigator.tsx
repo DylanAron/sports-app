@@ -59,6 +59,8 @@ function TabNavigator() {
   const [guideImageUrl, setGuideImageUrl] = useState('');
   const [tabGuideMap, setTabGuideMap] = useState<Record<string, { imageUrl: string; isGlobalEnabled: number }>>({});
   const shownTabsRef = useRef<Set<string>>(new Set());
+  const pendingTabRef = useRef<string | null>(null);
+  const pendingImageUrlRef = useRef<string>('');
 
   useEffect(() => {
     tabGuideApi.getList().then(list => {
@@ -72,19 +74,27 @@ function TabNavigator() {
       const homeGuide = map['home'];
       if (homeGuide && homeGuide.isGlobalEnabled === 1 && !shownTabsRef.current.has('home')) {
         shownTabsRef.current.add('home');
-        setGuideImageUrl(homeGuide.imageUrl);
-        setGuideModalVisible(true);
+        pendingImageUrlRef.current = homeGuide.imageUrl;
+        pendingTabRef.current = 'home';
       }
     }).catch(() => {});
   }, []);
+
+  const onPageReady = (tabKey: string) => {
+    if (pendingTabRef.current === tabKey) {
+      pendingTabRef.current = null;
+      setGuideImageUrl(pendingImageUrlRef.current);
+      setGuideModalVisible(true);
+    }
+  };
 
   const checkTabGuide = (tabKey: string) => {
     const guide = tabGuideMap[tabKey];
     if (!guide || guide.isGlobalEnabled !== 1) return;
     if (shownTabsRef.current.has(tabKey)) return;
     shownTabsRef.current.add(tabKey);
-    setGuideImageUrl(guide.imageUrl);
-    setGuideModalVisible(true);
+    pendingImageUrlRef.current = guide.imageUrl;
+    pendingTabRef.current = tabKey;
   };
   return (<View style={{ flex: 1 }}>
     <Tab.Navigator
@@ -119,6 +129,7 @@ function TabNavigator() {
       <Tab.Screen
         name="Home"
         component={HomeScreen}
+        initialParams={{ onPageReady: () => onPageReady('home') }}
         options={{
           tabBarLabel: 'AI',
           tabBarIcon: ({ focused }) => (
@@ -129,6 +140,7 @@ function TabNavigator() {
       <Tab.Screen
         name="Analysis"
         component={AnalysisScreen}
+        initialParams={{ onPageReady: () => onPageReady('analysis') }}
         options={{
           tabBarLabel: '分析',
           tabBarIcon: ({ focused }) => (
@@ -139,6 +151,7 @@ function TabNavigator() {
       <Tab.Screen
         name="Score"
         component={ScoreScreen}
+        initialParams={{ onPageReady: () => onPageReady('score') }}
         options={{
           tabBarLabel: '比分',
           tabBarIcon: ({ focused }) => (

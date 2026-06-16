@@ -5,6 +5,7 @@ import {
 import { colors, fonts } from '../theme';
 import { analysisApi } from '../services/analysisService';
 import type { AnalysisItem } from '../services/analysisService';
+import { useRoute } from '@react-navigation/native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -34,6 +35,14 @@ const AnalysisScreen: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatRef = useRef<Animated.FlatList<AnalysisItem>>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
+  const route = useRoute<any>();
+  const hasCalledReady = useRef(false);
+
+  const onPageReady = useCallback(() => {
+    if (hasCalledReady.current) return;
+    hasCalledReady.current = true;
+    route.params?.onPageReady?.();
+  }, [route.params?.onPageReady]);
 
   useEffect(() => { loadData(); }, []);
 
@@ -46,6 +55,7 @@ const AnalysisScreen: React.FC = () => {
       setData([]);
     } finally {
       setLoading(false);
+      onPageReady();
     }
   };
 

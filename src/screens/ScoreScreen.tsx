@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,21 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { colors, fonts } from '../theme';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 const ScoreScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const route = useRoute<any>();
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
+  const hasCalledReady = useRef(false);
+
+  const onPageReady = useCallback(() => {
+    if (hasCalledReady.current) return;
+    hasCalledReady.current = true;
+    route.params?.onPageReady?.();
+  }, [route.params?.onPageReady]);
 
   return (
     <View style={styles.container}>
@@ -31,7 +39,7 @@ const ScoreScreen: React.FC = () => {
         style={styles.webview}
         scrollEnabled={false}
         pointerEvents="none"
-        onLoadEnd={() => setLoading(false)}
+        onLoadEnd={() => { setLoading(false); onPageReady(); }}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         injectedJavaScript={`

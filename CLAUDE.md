@@ -84,7 +84,7 @@ src/
 ## 架构要点
 
 ### API 层
-- 所有请求通过 `src/services/request.ts` (`api.get/post/put/delete`)
+- 所有请求通过 `src/utils/request.ts` (`api.get/post/put/delete`)
 - 根据 `__DEV__` 自动切换 API 地址：开发环境 `192.168.2.82:8086`，生产 `https://6hlot.com`
 - v2 接口请求体使用 AES-256-CBC 加密（密钥在 `cryptoConfig.ts`）
 - 自动通过 `X-Device-Id` 请求头发送设备 ID
@@ -115,3 +115,8 @@ src/
 更新 app 版本时，三处必须同时修改，保持一致。
 - 编辑 `src/config/env.ts` — `__DEV__` 自动选择配置，release 构建使用生产配置
 - 修改 `src/config/cryptoConfig.ts` 中的 `AES_KEY`（必须与服务端一致）
+
+###
+百度归因代码逻辑，从现在开始不要再修改。已经很稳定
+
+
