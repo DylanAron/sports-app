@@ -2,13 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
-import { View, Text, StyleSheet } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors, fonts } from '../theme';
 import { tabGuideApi } from '../services';
 import TabGuideModal from '../components/TabGuideModal';
 import FloatingCustomerService from '../components/FloatingCustomerService';
-import { useChatUnread } from '../contexts/ChatUnreadContext';
 import HomeScreen from '../screens/HomeScreen';
 import AnalysisScreen from '../screens/AnalysisScreen';
 import ScoreScreen from '../screens/ScoreScreen';
@@ -23,15 +22,38 @@ import CustomerServiceScreen from '../screens/CustomerServiceScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
+// Tab 图标资源
+const TabIcons = {
+  ai: {
+    selected: require('../assets/tab/ai_selected.png'),
+    unselected: require('../assets/tab/ai_unselected.png'),
+  },
+  analysis: {
+    selected: require('../assets/tab/analysis_selected.png'),
+    unselected: require('../assets/tab/analysis_unselected.png'),
+  },
+  score: {
+    selected: require('../assets/tab/score_selected.png'),
+    unselected: require('../assets/tab/score_unselected.png'),
+  },
+  me: {
+    selected: require('../assets/tab/me_selected.png'),
+    unselected: require('../assets/tab/me_unselected.png'),
+  },
+};
+
 type TabIconProps = {
-  label: string;
-  icon: string;
+  source: ReturnType<typeof require>;
   focused: boolean;
 };
 
-const TabIcon: React.FC<TabIconProps> = ({ icon, focused }) => (
+const TabIcon: React.FC<TabIconProps> = ({ source, focused }) => (
   <View style={[tabStyles.iconWrapper, focused && tabStyles.iconWrapperActive]}>
-    <Text style={[tabStyles.icon, focused && tabStyles.iconActive]}>{icon}</Text>
+    <Image
+      source={source}
+      style={[tabStyles.icon, focused && tabStyles.iconActive]}
+      resizeMode="contain"
+    />
   </View>
 );
 
@@ -44,13 +66,16 @@ const tabStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconWrapperActive: {
-    backgroundColor: colors.primary + '15',
+    backgroundColor: 'transparent',
   },
   icon: {
-    fontSize: 20,
-    opacity: 0.5,
+    width: 24,
+    height: 24,
+    opacity: 0.55,
   },
   iconActive: {
+    width: 32,
+    height: 32,
     opacity: 1,
   },
 });
@@ -63,8 +88,6 @@ function TabNavigator() {
   const shownTabsRef = useRef<Set<string>>(new Set());
   const pendingTabRef = useRef<string | null>(null);
   const pendingImageUrlRef = useRef<string>('');
-
-  const { unreadCount } = useChatUnread();
 
   useEffect(() => {
     tabGuideApi.getList().then(list => {
@@ -103,7 +126,6 @@ function TabNavigator() {
   return (<View style={{ flex: 1 }}>
     <Tab.Navigator
       screenOptions={{
-        headerShown: false,
         tabBarStyle: {
           backgroundColor: colors.tabBar,
           borderTopColor: colors.tabBorder,
@@ -114,10 +136,11 @@ function TabNavigator() {
           elevation: 0,
           shadowOpacity: 0,
         },
+        headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textDim,
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: fonts.caption,
           fontWeight: '600',
           letterSpacing: 1,
           textDecorationLine: 'none',
@@ -137,7 +160,7 @@ function TabNavigator() {
         options={{
           tabBarLabel: 'AI',
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="AI" icon="🤖" focused={focused} />
+            <TabIcon source={focused ? TabIcons.ai.selected : TabIcons.ai.unselected} focused={focused} />
           ),
         }}
       />
@@ -148,7 +171,7 @@ function TabNavigator() {
         options={{
           tabBarLabel: '分析',
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="分析" icon="📊" focused={focused} />
+            <TabIcon source={focused ? TabIcons.analysis.selected : TabIcons.analysis.unselected} focused={focused} />
           ),
         }}
       />
@@ -159,7 +182,7 @@ function TabNavigator() {
         options={{
           tabBarLabel: '比分',
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="比分" icon="⚽" focused={focused} />
+            <TabIcon source={focused ? TabIcons.score.selected : TabIcons.score.unselected} focused={focused} />
           ),
         }}
       />
@@ -169,7 +192,7 @@ function TabNavigator() {
         options={{
           tabBarLabel: '我的',
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="我的" icon="👤" focused={focused} />
+            <TabIcon source={focused ? TabIcons.me.selected : TabIcons.me.unselected} focused={focused} />
           ),
         }}
       />

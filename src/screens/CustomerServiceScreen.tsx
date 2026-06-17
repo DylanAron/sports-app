@@ -68,7 +68,7 @@ const HtmlBubble = ({ html }: { html: string }) => {
   const source = useRef({
     html: `<!DOCTYPE html><html>
 <head><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>body{margin:0;padding:8px 12px;font-size:14px;line-height:1.5;color:#222;word-wrap:break-word;overflow-wrap:break-word}img{max-width:100%!important;height:auto}</style>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-size:14px;line-height:1.5;color:#222;word-wrap:break-word;overflow-wrap:break-word;padding:8px 12px}img{max-width:100%!important;height:auto}</style>
 </head><body>
 ${html}
 </body></html>`,
@@ -76,7 +76,7 @@ ${html}
   }).current;
 
   const availWidth = Dimensions.get('window').width - 68 - 48 - 32;
-  const js = `(function(){var i=setInterval(function(){var h=document.body.scrollHeight;if(h>0){clearInterval(i);window.ReactNativeWebView.postMessage(''+h);}},50);setTimeout(function(){clearInterval(i);},3000);})();`;
+  const js = `(function(){var tid=setInterval(function(){var h=document.body.scrollHeight;if(h>0){clearInterval(tid);window.ReactNativeWebView.postMessage(''+h);}},80);setTimeout(function(){var h=document.body.scrollHeight;if(h>0)window.ReactNativeWebView.postMessage(''+h);clearInterval(tid);},500);})();`;
 
   return (
     <View style={[styles.agentBubble, { padding: 0, overflow: 'hidden', alignSelf: 'flex-start' }]}>
