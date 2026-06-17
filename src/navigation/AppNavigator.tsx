@@ -86,6 +86,7 @@ function TabNavigator() {
   const [guideImageUrl, setGuideImageUrl] = useState('');
   const [tabGuideMap, setTabGuideMap] = useState<Record<string, { imageUrl: string; isGlobalEnabled: number }>>({});
   const shownTabsRef = useRef<Set<string>>(new Set());
+  const homeReadyRef = useRef(false);
   const pendingTabRef = useRef<string | null>(null);
   const pendingImageUrlRef = useRef<string>('');
 
@@ -101,13 +102,21 @@ function TabNavigator() {
       const homeGuide = map['home'];
       if (homeGuide && homeGuide.isGlobalEnabled === 1 && !shownTabsRef.current.has('home')) {
         shownTabsRef.current.add('home');
-        pendingImageUrlRef.current = homeGuide.imageUrl;
-        pendingTabRef.current = 'home';
+        // 首页已 mount → 直接弹
+        if (homeReadyRef.current) {
+          setGuideImageUrl(homeGuide.imageUrl);
+          setGuideModalVisible(true);
+        } else {
+          // 首页还未 ready，等 onPageReady 回调
+          pendingImageUrlRef.current = homeGuide.imageUrl;
+          pendingTabRef.current = 'home';
+        }
       }
     }).catch(() => {});
   }, []);
 
   const onPageReady = (tabKey: string) => {
+    if (tabKey === 'home') homeReadyRef.current = true;
     if (pendingTabRef.current === tabKey) {
       pendingTabRef.current = null;
       setGuideImageUrl(pendingImageUrlRef.current);
