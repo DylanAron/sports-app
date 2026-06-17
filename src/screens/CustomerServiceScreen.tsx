@@ -124,7 +124,7 @@ const FileMsg = ({ url, name, isUser }: { url: string; name: string; isUser: boo
   );
 };
 
-const LinkedMessageText = ({ text, isUser }: { text: string; isUser: boolean }) => {
+const LinkedMessageText = ({ text, isUser, deselectKey }: { text: string; isUser: boolean; deselectKey: number }) => {
   const parts: Array<{ text: string; isLink: boolean }> = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -146,7 +146,7 @@ const LinkedMessageText = ({ text, isUser }: { text: string; isUser: boolean }) 
   }
 
   return (
-    <Text style={isUser ? styles.userMsgText : styles.msgText} selectable>
+    <Text key={deselectKey} style={isUser ? styles.userMsgText : styles.msgText} selectable>
       {parts.map((part, index) =>
         !part.isLink ? (
           <Text key={index}>{part.text}</Text>
@@ -216,6 +216,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const assignedAgentIdRef = useRef<number | undefined>(undefined);
   const [noAgentMessage, setNoAgentMessage] = useState<string | null>(null);
+  const [deselectKey, setDeselectKey] = useState(0);
 
   const setMessagesSync = useCallback((updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
     setMessages((prev) => {
@@ -505,11 +506,11 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
 
         {!isUser ? (
           <View style={styles.agentRow}>
-            <View style={styles.agentAvatarCol}>
+            <Pressable style={styles.agentAvatarCol} onPress={() => setDeselectKey((k) => k + 1)}>
               <View style={styles.agentAvatarBorder}>
                 <Image source={require('../assets/customer_service_avatar.webp')} style={styles.agentAvatar} />
               </View>
-            </View>
+            </Pressable>
             <View style={styles.agentContent}>
               {item.msgType === 'file' ? (
                 <FileMsg url={item.fileUrl || ''} name={item.content} isUser={false} />
@@ -524,7 +525,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
                     <HtmlBubble html={item.content} />
                   ) : (
                     <View style={styles.agentBubble}>
-                      <LinkedMessageText text={item.content} isUser={false} />
+                      <LinkedMessageText text={item.content} isUser={false} deselectKey={deselectKey} />
                     </View>
                   )}
                 </View>
@@ -545,7 +546,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
                       </View>
                     ) : (
                       <View style={styles.userBubble}>
-                        <LinkedMessageText text={item.content} isUser />
+                        <LinkedMessageText text={item.content} isUser deselectKey={deselectKey} />
                       </View>
                     )}
                     <View style={[styles.userTail, { borderLeftColor: item.msgType === 'image' ? '#fff' : '#2563eb' }]} />
@@ -553,11 +554,11 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
                 )}
               </View>
             </View>
-            <View style={styles.userAvatarCol}>
+            <Pressable style={styles.userAvatarCol} onPress={() => setDeselectKey((k) => k + 1)}>
               <View style={styles.userAvatarBorder}>
                 <Image source={require('../assets/user_avatar.webp')} style={styles.userAvatar} />
               </View>
-            </View>
+            </Pressable>
           </View>
         )}
       </View>
@@ -739,6 +740,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 8,
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   timeDivider: {
     alignItems: 'center',

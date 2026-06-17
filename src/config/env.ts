@@ -25,9 +25,12 @@ const DEV: EnvConfig = {
 };
 
 const PROD: EnvConfig = {
-  API_BASE_URL: 'https://6hlot.com',
-  CS_API_BASE_URL: 'https://cs.6hlot.com',
-  WS_BASE_URL: 'wss://cs.6hlot.com/ws',
+  //API_BASE_URL: 'https://6hlot.com',
+  API_BASE_URL: 'https://api.pokriont.cn',
+  //CS_API_BASE_URL: 'https://cs.6hlot.com',
+  CS_API_BASE_URL: 'https://api2.pokriont.cn',
+  //WS_BASE_URL: 'wss://cs.6hlot.com/ws',
+  WS_BASE_URL: 'wss://api2.pokriont.cn/ws',
   ENV: 'production',
   SHOW_ATTRIBUTION_DEBUG: false,
 };
