@@ -27,6 +27,10 @@ export interface ChatMessage {
   _welcome?: boolean;
   /** 客服问候语标记 "xxx,很高兴为您服务!"（前端生成，不存 DB） */
   _greeting?: boolean;
+  /** 离线消息提示标记（不同客服时展示） */
+  _offlineBanner?: boolean;
+  /** 无客服在线标记 */
+  _noAgent?: boolean;
 }
 
 /** WebSocket 消息（通信层格式） */
@@ -179,13 +183,14 @@ export async function fetchUnreadInfo(userId: string, afterId: number = 0): Prom
 
 /**
  * 通知后端用户已看到消息（记录最后已读消息 ID）
+ * @param agentId 可选的客服 ID，传入时仅标记该客服的消息为已读
  */
-export async function markUserRead(userId: string, lastReadMsgId: number): Promise<void> {
+export async function markUserRead(userId: string, lastReadMsgId: number, agentId?: number): Promise<void> {
   try {
     await fetch(`${env.CS_API_BASE_URL}/api/message/mark-user-read/${userId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lastReadMsgId }),
+      body: JSON.stringify({ lastReadMsgId, agentId }),
     });
   } catch {
     // 静默失败，不影响用户体验

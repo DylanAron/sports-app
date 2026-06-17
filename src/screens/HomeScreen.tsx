@@ -64,7 +64,12 @@ const HomeScreen: React.FC = () => {
   }, [route.params?.onPageReady]);
 
   useFocusEffect(
-    useCallback(() => { setPage({ type: 'home' }); }, [])
+    useCallback(() => {
+      setPage({ type: 'home' });
+      StatusBar.setBarStyle('dark-content');
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
+    }, [])
   );
 
   if (page.type === 'corner_list') return <CornerListScreen onBack={() => setPage({ type: 'home' })} onDetail={(id) => setPage({ type: 'corner_detail', id })} />;

@@ -27,6 +27,7 @@ import {
   getFullFileUrl,
   markUserRead,
   type ChatMessage,
+  type WsMessage,
 } from '../services/chatService';
 import { useChatUnread } from '../contexts/ChatUnreadContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -212,10 +213,9 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const filterAgentName = route?.params?.filterAgentName ?? undefined;
 
   // 使用全局未读 Context
-  const { resetUnread, markLastRead, setChatFocused, latestAgentName } = useChatUnread();
+  const { resetUnread, markLastRead, setChatFocused } = useChatUnread();
 
   const assignedAgentIdRef = useRef<number | undefined>(undefined);
-  const [noAgentMessage, setNoAgentMessage] = useState<string | null>(null);
   const [deselectKey, setDeselectKey] = useState(0);
 
   const setMessagesSync = useCallback((updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
@@ -242,169 +242,276 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
       if (cancelled) return;
       uidRef.current = uid;
 
-      resetUnread();
+      setLoading(true);
 
-      // 问候语协调：仅当三个条件同时满足才插入 "客服{昵称},很高兴为您服务!"
-      // 条件: (1) 历史消息已加载 (2) welcome 已收到 (3) 已分配客服
-      let welcomed = false;
-      let historyComplete = false;
-      const agentGreeting = {
-        id: undefined as number | undefined,
-        name: '' as string,
-      };
+      // WS 消息缓冲区：init 完成前暂存所有消息
+      const messageBuffer: WsMessage[] = [];
+      let initComplete = false;
 
-      const flushGreeting = () => {
-        if (agentGreeting.id == null) return;
-        const displayName = agentGreeting.name ? `客服${agentGreeting.name}` : '客服';
-        const greetingMsg: ChatMessage = {
-          content: `${displayName},很高兴为您服务!`,
-          msgType: 'text',
-          direction: 'agent',
-          timestamp: new Date().toISOString(),
-          _greeting: true,
-        };
-        setMessagesSync((prev) => {
-          const filtered = prev.filter((m) => !m._greeting);
-          const welcomeIdx = filtered.findIndex((m) => m._welcome);
-          if (welcomeIdx >= 0) {
-            // 紧跟在欢迎语之后
-            return [...filtered.slice(0, welcomeIdx + 1), greetingMsg, ...filtered.slice(welcomeIdx + 1)];
+      // 分配结果 Promise（同步等待 WS 分配结果）
+      let resolveAssignment: ((result: {
+        agentId?: number;
+        agentName?: string;
+      }) => void) | null = null;
+
+      const assignmentPromise = new Promise<{
+        agentId?: number;
+        agentName?: string;
+      }>((resolve) => {
+        resolveAssignment = resolve;
+      });
+
+      // 5秒超时保护
+      const timeoutId = setTimeout(() => {
+        if (resolveAssignment) {
+          resolveAssignment({});
+          resolveAssignment = null;
+        }
+      }, 5000);
+
+      // 判断是否为后端问候语（无 id，内容以 ",很高兴为您服务!" 结尾，前端自己生成不重复显示）
+      const isBackendGreeting = (m: WsMessage) =>
+        !m.id && !!m.content && m.content.endsWith(',很高兴为您服务!');
+
+      // 处理一条 WS 消息（实时处理或缓冲后回放）
+      const handleWsMessage = (msg: WsMessage) => {
+        if (msg.type === 'agent_message') {
+          // 跳过后端问候语，前端自己生成
+          if (isBackendGreeting(msg)) return;
+
+          const fileType = (msg.msgType || 'text') as 'text' | 'image' | 'file';
+          let content = msg.content || '';
+          let fileUrl = msg.fileUrl;
+
+          if (!fileUrl && msg.content) {
+            if (fileType === 'image') {
+              fileUrl = msg.content;
+              content = '';
+            } else if (fileType === 'file' && /^https?:\/\//i.test(msg.content.trim())) {
+              fileUrl = msg.content.trim();
+            }
           }
-          return [greetingMsg, ...filtered];
-        });
-        agentGreeting.id = undefined; // 防止重复插入
-      };
+          if (fileType === 'text' && !fileUrl && msg.content &&
+              /^https?:\/\/[^\s]+\.(webp|png|jpg|jpeg|gif|bmp)(\?|$)/i.test(msg.content.trim())) {
+            fileUrl = msg.content.trim();
+            content = '';
+          }
 
-      const tryFlushGreeting = () => {
-        if (!cancelled && agentGreeting.id != null && welcomed && historyComplete) {
-          flushGreeting();
+          setMessagesSync((prev) => [{
+            id: msg.id,
+            content,
+            msgType: fileUrl && fileType === 'text' ? 'image' : fileType,
+            direction: 'agent',
+            fileUrl,
+            timestamp: msg.timestamp || new Date().toISOString(),
+          }, ...prev]);
+
+          if (msg.id) {
+            markLastRead(msg.id);
+            markUserRead(uidRef.current, msg.id, msg.agentId).catch(() => {});
+          }
+        } else if (msg.type === 'welcome_message') {
+          const content = msg.content || '您好，欢迎来到在线客服，请问有什么可以帮助您的？';
+          setMessagesSync((prev) => [{
+            content,
+            msgType: 'text',
+            direction: 'agent',
+            timestamp: msg.timestamp || new Date().toISOString(),
+            _welcome: true,
+          }, ...prev]);
         }
       };
-
-      // Path A: 有未读 → 拉对应客服历史
-      if (filterAgentId) {
-        const history = await fetchHistory(uid, String(filterAgentId), { size: 50 });
-        if (cancelled) return;
-        const msgs: ChatMessage[] = Array.isArray(history) ? [...history].reverse() : [];
-
-        let newestWithId: ChatMessage | undefined;
-        for (const m of msgs) {
-          if (m.id != null) { newestWithId = m; break; }
-        }
-        if (newestWithId?.id) {
-          markLastRead(newestWithId.id);
-          await markUserRead(uid, newestWithId.id);
-        }
-
-        setMessagesSync(msgs);
-        historyComplete = true;
-        setLoading(false);
-      } else {
-        // Path B: 无未读 → 初始不 loading，等 WS 消息逐条到达
-        setMessagesSync([]);
-        setLoading(false);
-        setNoAgentMessage(null);
-      }
 
       // 建立 WebSocket
       const ws = createWebSocketConnection(uid, {
         onOpen: () => setChatFocused(true),
         onMessage: (msg) => {
-          if (msg.type === 'agent_message') {
-            const fileType = (msg.msgType || 'text') as 'text' | 'image' | 'file';
-            let content = msg.content || '';
-            let fileUrl = msg.fileUrl;
-
-            if (!fileUrl && msg.content) {
-              if (fileType === 'image') {
-                fileUrl = msg.content;
-                content = '';
-              } else if (fileType === 'file' && /^https?:\/\//i.test(msg.content.trim())) {
-                fileUrl = msg.content.trim();
-              }
-            }
-            if (fileType === 'text' && !fileUrl && msg.content &&
-                /^https?:\/\/[^\s]+\.(webp|png|jpg|jpeg|gif|bmp)(\?|$)/i.test(msg.content.trim())) {
-              fileUrl = msg.content.trim();
-              content = '';
-            }
-
-            setMessagesSync((prev) => [{
-              id: msg.id,
-              content,
-              msgType: fileUrl && fileType === 'text' ? 'image' : fileType,
-              direction: 'agent',
-              fileUrl,
-              timestamp: msg.timestamp || new Date().toISOString(),
-            }, ...prev]);
-
-            if (msg.id) {
-              markLastRead(msg.id);
-              markUserRead(uidRef.current, msg.id).catch(() => {});
-            }
-          } else if (msg.type === 'welcome_message') {
-            const content = msg.content || '您好，欢迎来到在线客服，请问有什么可以帮助您的？';
-            setMessagesSync((prev) => [{
-              content,
-              msgType: 'text',
-              direction: 'agent',
-              timestamp: msg.timestamp || new Date().toISOString(),
-              _welcome: true,
-            }, ...prev]);
-            welcomed = true;
-            tryFlushGreeting();
-          } else if (msg.type === 'system') {
+          // 截获 system 中的分配/无客服结果，用于 Promise resolve
+          if (msg.type === 'system') {
             if (msg.agent_assigned) {
               const agentId = Number(msg.agent_assigned);
               if (!isNaN(agentId)) {
-                assignedAgentIdRef.current = agentId;
-                agentGreeting.id = agentId;
-                agentGreeting.name = msg.agent_name || filterAgentName || latestAgentName || '';
-
-                if (!filterAgentId) {
-                  // Path B: 拉历史（不含 greeting），完成后尝试插入问候语
-                  fetchHistory(uidRef.current, String(agentId), { size: 50 })
-                    .then((history) => {
-                      if (cancelled) return;
-                      const historyMsgs: ChatMessage[] = Array.isArray(history) ? [...history].reverse() : [];
-
-                      setMessagesSync((prev) => {
-                        const existIds = new Set(prev.map((m) => m.id).filter(Boolean));
-                        const newMsgs = historyMsgs.filter((m) => !m.id || !existIds.has(m.id));
-                        const noWelcome = prev.filter((m) => !m._welcome);
-                        const welcome = prev.filter((m) => m._welcome);
-                        const merged = [...welcome, ...newMsgs, ...noWelcome];
-                        let newestWithId: ChatMessage | undefined;
-                        for (const m of merged) {
-                          if (m.id != null) { newestWithId = m; break; }
-                        }
-                        if (newestWithId?.id) {
-                          markLastRead(newestWithId.id);
-                          markUserRead(uidRef.current, newestWithId.id).catch(() => {});
-                        }
-                        return merged;
-                      });
-
-                      historyComplete = true;
-                      tryFlushGreeting();
-                    });
-                } else {
-                  // Path A: 历史已加载，直接检查是否可插入问候语
-                  tryFlushGreeting();
+                clearTimeout(timeoutId);
+                if (resolveAssignment) {
+                  resolveAssignment({
+                    agentId,
+                    agentName: msg.agent_name || '',
+                  });
+                  resolveAssignment = null;
                 }
               }
             } else if (msg.no_agent) {
-              setNoAgentMessage(
-                typeof msg.no_agent === 'string'
-                  ? msg.no_agent
-                  : '当前没有在线客服，您可留言，我们会尽快回复您',
-              );
+              clearTimeout(timeoutId);
+              if (resolveAssignment) {
+                resolveAssignment({});
+                resolveAssignment = null;
+              }
             }
+          }
+
+          // 缓冲或实时处理
+          if (!initComplete) {
+            messageBuffer.push(msg);
+          } else {
+            handleWsMessage(msg);
           }
         },
         onClose: () => {},
       });
       wsRef.current = ws;
+
+      // 1️⃣ 同步等待分配结果
+      const assignment = await assignmentPromise;
+      if (cancelled) return;
+
+      const assignedAgentId = assignment.agentId;
+      const assignedAgentName = assignment.agentName || '';
+
+      if (assignedAgentId) {
+        assignedAgentIdRef.current = assignedAgentId;
+
+        // 判断：浮标有未读且分配的客服和未读客服不同？
+        const isDiffAgent = !!(filterAgentId && assignedAgentId !== filterAgentId);
+
+        if (isDiffAgent) {
+          // 🅲 场景3：不同客服 — 加载未读客服历史 + 离线提示
+          const history = await fetchHistory(uid, String(filterAgentId), { size: 50 });
+          if (cancelled) return;
+          const msgs: ChatMessage[] = Array.isArray(history) ? [...history].reverse() : [];
+
+          let newestWithId: ChatMessage | undefined;
+          for (const m of msgs) {
+            if (m.id != null) { newestWithId = m; break; }
+          }
+          if (newestWithId?.id) {
+            markLastRead(newestWithId.id);
+            await markUserRead(uid, newestWithId.id, filterAgentId);
+          }
+
+          resetUnread();
+
+          setMessagesSync(msgs);
+
+          // 回放缓冲（欢迎语等）
+          initComplete = true;
+          for (const bMsg of messageBuffer) {
+            handleWsMessage(bMsg);
+          }
+
+          // 追加离线提示（放在 welcome 之后，历史之前）
+          const offlineName = filterAgentName || '';
+          setMessagesSync((prev) => {
+            const filtered = prev.filter((m) => !m._offlineBanner);
+            const offlineBanner: ChatMessage = {
+              content: offlineName,
+              msgType: 'text',
+              direction: 'agent',
+              timestamp: new Date().toISOString(),
+              _offlineBanner: true,
+            };
+            const welcomeIdx = filtered.findIndex((m) => m._welcome);
+            if (welcomeIdx >= 0) {
+              return [...filtered.slice(0, welcomeIdx + 1), offlineBanner, ...filtered.slice(welcomeIdx + 1)];
+            }
+            return [offlineBanner, ...filtered];
+          });
+        } else {
+          // 🅰 🅱 正常逻辑：加载分配客服的历史
+          const history = await fetchHistory(uid, String(assignedAgentId), { size: 50 });
+          if (cancelled) return;
+          const msgs: ChatMessage[] = Array.isArray(history) ? [...history].reverse() : [];
+
+          let newestWithId: ChatMessage | undefined;
+          for (const m of msgs) {
+            if (m.id != null) { newestWithId = m; break; }
+          }
+          if (newestWithId?.id) {
+            markLastRead(newestWithId.id);
+            await markUserRead(uid, newestWithId.id, assignedAgentId);
+          }
+
+          resetUnread();
+
+          setMessagesSync(msgs);
+
+          // 回放缓冲（欢迎语等）
+          initComplete = true;
+          for (const bMsg of messageBuffer) {
+            handleWsMessage(bMsg);
+          }
+
+          // 插入问候语
+          const displayName = assignedAgentName ? `客服${assignedAgentName}` : '客服';
+          setMessagesSync((prev) => {
+            const filtered = prev.filter((m) => !m._greeting && !m._offlineBanner);
+            const welcomeIdx = filtered.findIndex((m) => m._welcome);
+            const greetingMsg: ChatMessage = {
+              content: `${displayName},很高兴为您服务!`,
+              msgType: 'text',
+              direction: 'agent',
+              timestamp: new Date().toISOString(),
+              _greeting: true,
+            };
+            if (welcomeIdx >= 0) {
+              // 在欢迎语之前（更低索引），这样 inverted 列表渲染到 welcome 下方
+              return [...filtered.slice(0, welcomeIdx), greetingMsg, ...filtered.slice(welcomeIdx)];
+            }
+            return [greetingMsg, ...filtered];
+          });
+        }
+      } else {
+        // Ⓓ 无客服：如果有关联的未读客服（浮标），加载其历史
+        if (filterAgentId) {
+          const history = await fetchHistory(uid, String(filterAgentId), { size: 50 });
+          if (cancelled) return;
+          const msgs: ChatMessage[] = Array.isArray(history) ? [...history].reverse() : [];
+
+          let newestWithId: ChatMessage | undefined;
+          for (const m of msgs) {
+            if (m.id != null) { newestWithId = m; break; }
+          }
+          if (newestWithId?.id) {
+            markLastRead(newestWithId.id);
+            await markUserRead(uid, newestWithId.id, filterAgentId);
+          }
+
+          resetUnread();
+
+          setMessagesSync(msgs);
+
+          // 回放缓冲（欢迎语等）
+          initComplete = true;
+          for (const bMsg of messageBuffer) {
+            handleWsMessage(bMsg);
+          }
+
+          // 离线提示
+          const offlineName = filterAgentName || '';
+          setMessagesSync((prev) => {
+            const filtered = prev.filter((m) => !m._offlineBanner);
+            const offlineBanner: ChatMessage = {
+              content: offlineName,
+              msgType: 'text',
+              direction: 'agent',
+              timestamp: new Date().toISOString(),
+              _offlineBanner: true,
+            };
+            const welcomeIdx = filtered.findIndex((m) => m._welcome);
+            if (welcomeIdx >= 0) {
+              return [...filtered.slice(0, welcomeIdx + 1), offlineBanner, ...filtered.slice(welcomeIdx + 1)];
+            }
+            return [offlineBanner, ...filtered];
+          });
+        } else {
+          // 联系客服入口：只回放欢迎语
+          initComplete = true;
+          for (const bMsg of messageBuffer) {
+            handleWsMessage(bMsg);
+          }
+        }
+      }
+
+      setLoading(false);
     };
 
     init();
@@ -495,6 +602,29 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
     const showTime = !prev ||
       Math.abs(new Date(item.timestamp || '').getTime() - new Date(prev.timestamp || '').getTime()) >= 5 * 60 * 1000;
     const isUser = item.direction === 'user';
+
+    // 离线客服提示
+    if (item._offlineBanner) {
+      return (
+        <View style={styles.offlineBannerContainer}>
+          <Text style={styles.offlineBannerTitle}>
+            当前消息为您与客服{item.content || ''}的离线消息
+          </Text>
+          <Text style={styles.offlineBannerSub}>
+            重新进入可连接其它在线客服为您服务{'\n'}或继续离线消息回复
+          </Text>
+        </View>
+      );
+    }
+
+    // 无客服提示
+    if (item._noAgent) {
+      return (
+        <View style={styles.offlineBannerContainer}>
+          <Text style={styles.offlineBannerTitle}>{item.content}</Text>
+        </View>
+      );
+    }
 
     return (
       <View>
@@ -588,10 +718,6 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
       {loading && messages.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : noAgentMessage && messages.length === 0 ? (
-        <View style={styles.noAgentContainer}>
-          <Text style={styles.noAgentText}>{noAgentMessage}</Text>
         </View>
       ) : messages.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -702,6 +828,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  /* Offline Banner */
+  offlineBannerContainer: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 32,
+    marginBottom: 18,
+  },
+  offlineBannerTitle: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    lineHeight: 22,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  offlineBannerSub: {
+    fontSize: 13,
+    color: '#aaa',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
   /* Empty */
   emptyContainer: {
     flex: 1,
@@ -723,18 +871,6 @@ const styles = StyleSheet.create({
   },
 
   /* No Agent */
-  noAgentContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  noAgentText: {
-    fontSize: 15,
-    color: '#888',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
 
   listContent: {
     paddingHorizontal: 16,
