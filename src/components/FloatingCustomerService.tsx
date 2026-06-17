@@ -118,8 +118,8 @@ export default function FloatingCustomerService() {
           // 轻触（几乎没移动）
           if (Math.abs(g.dx) < 5 && Math.abs(g.dy) < 5) {
             navigation.navigate('CustomerService', {
-              filterAgentId: latestAgentId || undefined,
-              filterAgentName: latestAgentName || undefined,
+              filterAgentId: unreadCount > 0 ? (latestAgentId || undefined) : undefined,
+              filterAgentName: unreadCount > 0 ? (latestAgentName || undefined) : undefined,
             });
             return;
           }
