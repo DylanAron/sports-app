@@ -83,10 +83,8 @@ const AiListScreen: React.FC<Props> = ({ module, onBack }) => {
     setLoading(true);
     pages.today = 1; pages.history = 1;
     hasMore.today = true; hasMore.history = true;
-    setTodayData([]);
-    setHistoryData([]);
-    loadData(false, 'today');
-    loadData(false, 'history');
+    loadData(true, 'today');
+    loadData(true, 'history');
   }, [module]);
 
   const handleRefresh = () => {
