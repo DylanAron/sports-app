@@ -207,16 +207,15 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const uidRef = useRef('');
   const insets = useSafeAreaInsets();
 
-  // 从路由参数中读取筛选信息
-  const [filterAgentId, setFilterAgentId] = useState<number | undefined>(
-    route?.params?.filterAgentId || undefined,
-  );
-  const [filterAgentName, setFilterAgentName] = useState<string | undefined>(
-    route?.params?.filterAgentName || undefined,
-  );
+  // 从路由参数中读取筛选信息（直接读取，不再提供 setter —— 无需清除过滤）
+  const filterAgentId = route?.params?.filterAgentId ?? undefined;
+  const filterAgentName = route?.params?.filterAgentName ?? undefined;
 
   // 使用全局未读 Context
   const { resetUnread, markLastRead, setChatFocused } = useChatUnread();
+
+  const assignedAgentIdRef = useRef<number | undefined>(undefined);
+  const [noAgentMessage, setNoAgentMessage] = useState<string | null>(null);
 
   const setMessagesSync = useCallback((updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
     setMessages((prev) => {
@@ -242,34 +241,35 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
       if (cancelled) return;
       uidRef.current = uid;
 
-      // 根据筛选参数决定查询哪个客服的历史消息
-      const agentIdParam = filterAgentId ? String(filterAgentId) : undefined;
-      const history = await fetchHistory(uid, agentIdParam, { size: 50 });
-      if (cancelled) return;
-      const msgs = Array.isArray(history) ? [...history].reverse() : [];
-
-      // msgs 是 [最新(id最大), ..., 最旧(id最小)]（reverse 后），取第一条有 id 的（即 id 最大的）
-      let newestWithId: ChatMessage | undefined;
-      for (const m of msgs) {
-        if (m.id != null) { newestWithId = m; break; }
-      }
-      if (newestWithId?.id) {
-        markLastRead(newestWithId.id);
-        await markUserRead(uid, newestWithId.id);
-      }
-
-      setMessagesSync(msgs);
-      setLoading(false);
-
-      // 进入聊天页即清零未读数（用户看到消息了）
       resetUnread();
+
+      // Path A: 有未读 → 拉对应客服历史
+      if (filterAgentId) {
+        const history = await fetchHistory(uid, String(filterAgentId), { size: 50 });
+        if (cancelled) return;
+        const msgs: ChatMessage[] = Array.isArray(history) ? [...history].reverse() : [];
+
+        let newestWithId: ChatMessage | undefined;
+        for (const m of msgs) {
+          if (m.id != null) { newestWithId = m; break; }
+        }
+        if (newestWithId?.id) {
+          markLastRead(newestWithId.id);
+          await markUserRead(uid, newestWithId.id);
+        }
+
+        setMessagesSync(msgs);
+        setLoading(false);
+      } else {
+        // Path B: 无未读 → 初始不 loading，等 WS 消息逐条到达
+        setMessagesSync([]);
+        setLoading(false);
+        setNoAgentMessage(null);
+      }
 
       // 建立 WebSocket
       const ws = createWebSocketConnection(uid, {
-        onOpen: () => {
-          // 聊天 WS 真正连通后才屏蔽 push 通知，杜绝间隙丢消息
-          setChatFocused(true);
-        },
+        onOpen: () => setChatFocused(true),
         onMessage: (msg) => {
           if (msg.type === 'agent_message') {
             const fileType = (msg.msgType || 'text') as 'text' | 'image' | 'file';
@@ -295,14 +295,11 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
               timestamp: msg.timestamp || new Date().toISOString(),
             }, ...prev]);
 
-            // 聊天页内收到的消息，标记已读
             if (msg.id) {
               markLastRead(msg.id);
-              // fire-and-forget，不阻塞 UI
               markUserRead(uidRef.current, msg.id).catch(() => {});
             }
           } else if (msg.type === 'welcome_message') {
-            // 将欢迎语作为客服消息添加到列表
             const content = msg.content || '您好，欢迎来到在线客服，请问有什么可以帮助您的？';
             setMessagesSync((prev) => [{
               content,
@@ -311,6 +308,64 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
               timestamp: msg.timestamp || new Date().toISOString(),
               _welcome: true,
             }, ...prev]);
+          } else if (msg.type === 'system') {
+            if (msg.agent_assigned) {
+              const agentId = Number(msg.agent_assigned);
+              if (!isNaN(agentId)) {
+                assignedAgentIdRef.current = agentId;
+
+                const agentName = filterAgentName || '客服';
+                const greetingMsg: ChatMessage = {
+                  content: `${agentName},很高兴为您服务!`,
+                  msgType: 'text',
+                  direction: 'agent',
+                  timestamp: new Date().toISOString(),
+                  _greeting: true,
+                };
+
+                if (!filterAgentId) {
+                  // Path B: 拉历史 + 合并已有消息 + greeting
+                  fetchHistory(uidRef.current, String(agentId), { size: 50 })
+                    .then((history) => {
+                      if (cancelled) return;
+                      const historyMsgs: ChatMessage[] = Array.isArray(history) ? [...history].reverse() : [];
+
+                      // greeting 放在欢迎语之后、历史消息之前
+                      historyMsgs.push(greetingMsg);
+
+                      setMessagesSync((prev) => {
+                        const existIds = new Set(prev.map((m) => m.id).filter(Boolean));
+                        const newMsgs = historyMsgs.filter((m) => !m.id || !existIds.has(m.id));
+                        const noWelcome = prev.filter((m) => !m._welcome);
+                        const welcome = prev.filter((m) => m._welcome);
+                        const merged = [...welcome, ...newMsgs, ...noWelcome];
+                        let newestWithId: ChatMessage | undefined;
+                        for (const m of merged) {
+                          if (m.id != null) { newestWithId = m; break; }
+                        }
+                        if (newestWithId?.id) {
+                          markLastRead(newestWithId.id);
+                          markUserRead(uidRef.current, newestWithId.id).catch(() => {});
+                        }
+                        return merged;
+                      });
+                    });
+                } else {
+                  // Path A: 历史已加载，只追加 greeting（去重）
+                  setMessagesSync((prev) => {
+                    const hasGreeting = prev.some((m) => m._greeting);
+                    if (hasGreeting) return prev;
+                    return [...prev, greetingMsg];
+                  });
+                }
+              }
+            } else if (msg.no_agent) {
+              setNoAgentMessage(
+                typeof msg.no_agent === 'string'
+                  ? msg.no_agent
+                  : '当前没有在线客服，您可留言，我们会尽快回复您',
+              );
+            }
           }
         },
         onClose: () => {},
@@ -326,7 +381,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [setMessagesSync, filterAgentId, markLastRead, resetUnread, setChatFocused]);
+  }, [setMessagesSync, filterAgentId, filterAgentName, markLastRead, resetUnread, setChatFocused]);
 
   /* ── 发送文本 ── */
   const sendMessage = () => {
@@ -423,13 +478,15 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
               </View>
             </View>
             <View style={styles.agentContent}>
-              {item.fileUrl || item.msgType === 'file' ? (
+              {item.msgType === 'file' ? (
                 <FileMsg url={item.fileUrl || ''} name={item.content} isUser={false} />
               ) : (
                 <View style={styles.agentWrap}>
                   <View style={styles.agentTail} />
                   {item.msgType === 'image' ? (
-                    <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser={false} />
+                    <View style={styles.agentBubble}>
+                      <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser={false} />
+                    </View>
                   ) : isHtmlContent(item.content) ? (
                     <HtmlBubble html={item.content} />
                   ) : (
@@ -445,7 +502,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
           <View style={styles.userRow}>
             <View style={styles.userContent}>
               <View style={styles.userWrap}>
-                {item.fileUrl || item.msgType === 'file' ? (
+                {item.msgType === 'file' ? (
                   <FileMsg url={item.fileUrl || ''} name={item.content} isUser />
                 ) : (
                   <>
@@ -493,27 +550,14 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={styles.headerRight} />
       </View>
 
-      {/* 筛选横幅 */}
-      {filterAgentId && !loading && (
-        <View style={styles.filterBanner}>
-          <Text style={styles.filterText}>
-            查看与客服 {filterAgentName || filterAgentId} 的对话
-          </Text>
-          <TouchableOpacity
-            onPress={() => {
-              setFilterAgentId(undefined);
-              setFilterAgentName(undefined);
-            }}
-          >
-            <Text style={styles.filterClearText}>查看全部</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* 消息列表 */}
-      {loading ? (
+      {loading && messages.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : noAgentMessage && messages.length === 0 ? (
+        <View style={styles.noAgentContainer}>
+          <Text style={styles.noAgentText}>{noAgentMessage}</Text>
         </View>
       ) : messages.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -644,31 +688,20 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  /* Filter Banner */
-  filterBanner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#eff6ff',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#dbeafe',
-  },
-  filterText: {
-    fontSize: 13,
-    color: '#2563eb',
-    fontWeight: '500',
+  /* No Agent */
+  noAgentContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
   },
-  filterClearText: {
-    fontSize: 13,
-    color: '#2563eb',
-    fontWeight: '600',
-    marginLeft: 12,
+  noAgentText: {
+    fontSize: 15,
+    color: '#888',
+    textAlign: 'center',
+    lineHeight: 24,
   },
 
-  /* Messages */
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 8,

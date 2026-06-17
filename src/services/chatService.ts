@@ -25,6 +25,8 @@ export interface ChatMessage {
   _local?: boolean;
   /** 欢迎语标记（不存 DB） */
   _welcome?: boolean;
+  /** 客服问候语标记 "xxx,很高兴为您服务!"（前端生成，不存 DB） */
+  _greeting?: boolean;
 }
 
 /** WebSocket 消息（通信层格式） */
