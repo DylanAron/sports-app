@@ -42,6 +42,7 @@ export interface WsMessage {
   direction?: MessageDirection;
   timestamp?: string;
   agent_assigned?: string;
+  agent_name?: string;
   no_agent?: string;
 }
 

@@ -212,7 +212,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
   const filterAgentName = route?.params?.filterAgentName ?? undefined;
 
   // 使用全局未读 Context
-  const { resetUnread, markLastRead, setChatFocused } = useChatUnread();
+  const { resetUnread, markLastRead, setChatFocused, latestAgentName } = useChatUnread();
 
   const assignedAgentIdRef = useRef<number | undefined>(undefined);
   const [noAgentMessage, setNoAgentMessage] = useState<string | null>(null);
@@ -243,6 +243,43 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
 
       resetUnread();
 
+      // 问候语协调：仅当三个条件同时满足才插入 "客服{昵称},很高兴为您服务!"
+      // 条件: (1) 历史消息已加载 (2) welcome 已收到 (3) 已分配客服
+      let welcomed = false;
+      let historyComplete = false;
+      const agentGreeting = {
+        id: undefined as number | undefined,
+        name: '' as string,
+      };
+
+      const flushGreeting = () => {
+        if (agentGreeting.id == null) return;
+        const displayName = agentGreeting.name ? `客服${agentGreeting.name}` : '客服';
+        const greetingMsg: ChatMessage = {
+          content: `${displayName},很高兴为您服务!`,
+          msgType: 'text',
+          direction: 'agent',
+          timestamp: new Date().toISOString(),
+          _greeting: true,
+        };
+        setMessagesSync((prev) => {
+          const filtered = prev.filter((m) => !m._greeting);
+          const welcomeIdx = filtered.findIndex((m) => m._welcome);
+          if (welcomeIdx >= 0) {
+            // 紧跟在欢迎语之后
+            return [...filtered.slice(0, welcomeIdx + 1), greetingMsg, ...filtered.slice(welcomeIdx + 1)];
+          }
+          return [greetingMsg, ...filtered];
+        });
+        agentGreeting.id = undefined; // 防止重复插入
+      };
+
+      const tryFlushGreeting = () => {
+        if (!cancelled && agentGreeting.id != null && welcomed && historyComplete) {
+          flushGreeting();
+        }
+      };
+
       // Path A: 有未读 → 拉对应客服历史
       if (filterAgentId) {
         const history = await fetchHistory(uid, String(filterAgentId), { size: 50 });
@@ -259,6 +296,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
         }
 
         setMessagesSync(msgs);
+        historyComplete = true;
         setLoading(false);
       } else {
         // Path B: 无未读 → 初始不 loading，等 WS 消息逐条到达
@@ -276,9 +314,13 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
             let content = msg.content || '';
             let fileUrl = msg.fileUrl;
 
-            if (fileType === 'image' && !fileUrl && msg.content) {
-              fileUrl = msg.content;
-              content = '';
+            if (!fileUrl && msg.content) {
+              if (fileType === 'image') {
+                fileUrl = msg.content;
+                content = '';
+              } else if (fileType === 'file' && /^https?:\/\//i.test(msg.content.trim())) {
+                fileUrl = msg.content.trim();
+              }
             }
             if (fileType === 'text' && !fileUrl && msg.content &&
                 /^https?:\/\/[^\s]+\.(webp|png|jpg|jpeg|gif|bmp)(\?|$)/i.test(msg.content.trim())) {
@@ -289,7 +331,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
             setMessagesSync((prev) => [{
               id: msg.id,
               content,
-              msgType: fileUrl ? 'image' : fileType,
+              msgType: fileUrl && fileType === 'text' ? 'image' : fileType,
               direction: 'agent',
               fileUrl,
               timestamp: msg.timestamp || new Date().toISOString(),
@@ -308,30 +350,22 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
               timestamp: msg.timestamp || new Date().toISOString(),
               _welcome: true,
             }, ...prev]);
+            welcomed = true;
+            tryFlushGreeting();
           } else if (msg.type === 'system') {
             if (msg.agent_assigned) {
               const agentId = Number(msg.agent_assigned);
               if (!isNaN(agentId)) {
                 assignedAgentIdRef.current = agentId;
-
-                const agentName = filterAgentName || '客服';
-                const greetingMsg: ChatMessage = {
-                  content: `${agentName},很高兴为您服务!`,
-                  msgType: 'text',
-                  direction: 'agent',
-                  timestamp: new Date().toISOString(),
-                  _greeting: true,
-                };
+                agentGreeting.id = agentId;
+                agentGreeting.name = msg.agent_name || filterAgentName || latestAgentName || '';
 
                 if (!filterAgentId) {
-                  // Path B: 拉历史 + 合并已有消息 + greeting
+                  // Path B: 拉历史（不含 greeting），完成后尝试插入问候语
                   fetchHistory(uidRef.current, String(agentId), { size: 50 })
                     .then((history) => {
                       if (cancelled) return;
                       const historyMsgs: ChatMessage[] = Array.isArray(history) ? [...history].reverse() : [];
-
-                      // greeting 放在欢迎语之后、历史消息之前
-                      historyMsgs.push(greetingMsg);
 
                       setMessagesSync((prev) => {
                         const existIds = new Set(prev.map((m) => m.id).filter(Boolean));
@@ -349,14 +383,13 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
                         }
                         return merged;
                       });
+
+                      historyComplete = true;
+                      tryFlushGreeting();
                     });
                 } else {
-                  // Path A: 历史已加载，只追加 greeting（去重）
-                  setMessagesSync((prev) => {
-                    const hasGreeting = prev.some((m) => m._greeting);
-                    if (hasGreeting) return prev;
-                    return [...prev, greetingMsg];
-                  });
+                  // Path A: 历史已加载，直接检查是否可插入问候语
+                  tryFlushGreeting();
                 }
               }
             } else if (msg.no_agent) {
