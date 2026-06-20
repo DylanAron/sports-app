@@ -311,6 +311,8 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
             markUserRead(uidRef.current, msg.id, msg.agentId).catch(() => {});
           }
         } else if (msg.type === 'welcome_message') {
+          // 去重：已经有欢迎语则跳过（WebSocket 重连后后端会重新发送）
+          if (messagesRef.current.some((m) => m._welcome)) return;
           const content = msg.content || '您好，欢迎来到在线客服，请问有什么可以帮助您的？';
           setMessagesSync((prev) => [{
             content,
@@ -514,7 +516,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
       setLoading(false);
     };
 
-    init();
+    init().catch(() => { if (!cancelled) setLoading(false); });
 
     return () => {
       cancelled = true;
@@ -649,7 +651,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
                   <View style={styles.agentTail} />
                   {item.msgType === 'image' ? (
                     <View style={styles.agentBubble}>
-                      <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser={false} />
+                      <ImageMsg url={getFullFileUrl(item.fileUrl || item.content) || ''} isUser={false} />
                     </View>
                   ) : isHtmlContent(item.content) ? (
                     <HtmlBubble html={item.content} />
@@ -672,7 +674,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
                   <>
                     {item.msgType === 'image' ? (
                       <View style={styles.userBubbleImage}>
-                        <ImageMsg url={getFullFileUrl(item.fileUrl || item.content)!} isUser />
+                        <ImageMsg url={getFullFileUrl(item.fileUrl || item.content) || ''} isUser />
                       </View>
                     ) : (
                       <View style={styles.userBubble}>
@@ -730,7 +732,7 @@ const CustomerServiceScreen: React.FC<Props> = ({ navigation, route }) => {
           data={messages}
           inverted
           keyExtractor={(item, index) => {
-            if (item.id) return String(item.id);
+            if (item.id != null) return String(item.id);
             if (item.timestamp) return `${item.timestamp}-${item.direction}-${index}`;
             return String(index);
           }}
